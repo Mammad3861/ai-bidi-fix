@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Bidi Fix</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="mark" aria-hidden="true">بA</div>
+        <div>
+          <h1>AI Bidi Fix</h1>
+          <p>Clearer mixed-direction chat text</p>
+        </div>
+      </header>
+
+      <form id="settings-form">
+        <label class="setting primary">
+          <span><strong>Enable extension</strong><small>Apply bidi fixes on supported sites</small></span>
+          <input type="checkbox" name="enabled" />
+        </label>
+
+        <div class="divider"></div>
+
+        <label class="setting">
+          <span>ChatGPT</span>
+          <input type="checkbox" name="chatgptEnabled" />
+        </label>
+        <label class="setting">
+          <span>Claude</span>
+          <input type="checkbox" name="claudeEnabled" />
+        </label>
+        <label class="setting">
+          <span><strong>Strong RTL mode</strong><small>Prefer RTL when any Persian or Arabic is present</small></span>
+          <input type="checkbox" name="strongRtl" />
+        </label>
+      </form>
+      <p id="status" role="status" aria-live="polite"></p>
+    </main>
+    <script type="module" src="./popup.ts"></script>
+  </body>
+</html>

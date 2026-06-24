@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "AI Bidi Fix",
+  "version": "0.1.0",
+  "description": "Improves mixed Persian/Arabic RTL and English LTR text in AI chat responses.",
+  "permissions": ["storage"],
+  "action": {
+    "default_title": "AI Bidi Fix",
+    "default_popup": "popup/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*"
+      ],
+      "js": ["content.js"],
+      "css": ["assets/content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
