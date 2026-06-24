@@ -84,7 +84,7 @@ After rebuilding, return to `chrome://extensions`, click **Reload** on BidiFix A
 
 ## Manual testing
 
-Try these prompts on both ChatGPT and Claude.
+Try these prompts on both ChatGPT and Claude. Before publishing a release, complete the full [manual QA checklist](docs/manual-test.md).
 
 ### Mixed prose and technical terms
 
@@ -124,6 +124,16 @@ Verify that the Persian text remains RTL while the command, path, URL, inline co
 
 - `storage`: saves extension settings using Chrome sync storage.
 - Declarative site access is limited to the supported ChatGPT and Claude URLs.
+
+## Roadmap
+
+- Keep pace with ChatGPT and Claude DOM changes.
+- Expand test coverage for bidi direction detection and inline isolation.
+- Improve handling of mathematical notation and complex rendered artifacts.
+- Evaluate support for additional AI chat sites based on user feedback.
+- Explore Firefox support after the Chromium MVP is stable.
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## License
 

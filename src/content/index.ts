@@ -30,7 +30,6 @@ function isSettingsKey(key: string): key is keyof Settings {
 
 const site = getCurrentSite();
 let settings: Settings = DEFAULT_SETTINGS;
-let lastClaudeDebugAt = 0;
 
 function siteIsEnabled(): boolean {
   if (!site || !settings.enabled) return false;
@@ -48,10 +47,6 @@ function processRoot(root: ParentNode): void {
 
   const uniqueMessages = new Set(messages);
   uniqueMessages.forEach((message) => applyBidiFix(message, settings.strongRtl, site));
-  if (site === 'claude' && uniqueMessages.size > 0 && Date.now() - lastClaudeDebugAt > 2000) {
-    console.debug('[BidiFix AI] Claude processed messages:', uniqueMessages.size);
-    lastClaudeDebugAt = Date.now();
-  }
 
   const composers = findComposers(root, site);
   if (root instanceof Element) {
@@ -64,7 +59,6 @@ function processRoot(root: ParentNode): void {
 if (site) {
   document.documentElement.dataset.bidifixLoaded = 'true';
   document.documentElement.dataset.bidifixSite = site;
-  if (site === 'claude') console.debug('[BidiFix AI] loaded on Claude');
   const observer = createBidiObserver(processRoot);
 
   document.addEventListener(

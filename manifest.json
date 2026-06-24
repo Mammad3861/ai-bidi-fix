@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "BidiFix AI",
   "version": "0.1.0",
-  "description": "Improves mixed Persian/Arabic RTL and English LTR text in AI chat responses.",
+  "description": "Improves mixed Persian/Arabic RTL and English LTR text in ChatGPT and Claude conversations.",
   "permissions": ["storage"],
   "action": {
     "default_title": "BidiFix AI",
