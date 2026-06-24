@@ -1,6 +1,6 @@
-# AI Bidi Fix
+# BidiFix AI
 
-AI Bidi Fix is a small Manifest V3 Chrome extension that improves mixed Persian/Arabic (RTL) and English (LTR) rendering in assistant responses on ChatGPT and Claude.
+BidiFix AI is a small Manifest V3 Chrome extension that improves mixed Persian/Arabic (RTL) and English (LTR) rendering in assistant responses on ChatGPT and Claude.
 
 It changes only direction and presentation metadata. It never rewrites message text, makes network requests, or sends analytics.
 

@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "AI Bidi Fix",
+  "name": "BidiFix AI",
   "version": "0.1.0",
   "description": "Improves mixed Persian/Arabic RTL and English LTR text in AI chat responses.",
   "permissions": ["storage"],
   "action": {
-    "default_title": "AI Bidi Fix",
+    "default_title": "BidiFix AI",
     "default_popup": "popup/popup.html"
   },
   "content_scripts": [
