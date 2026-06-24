@@ -14,19 +14,26 @@ main { padding: 20px; }
 header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
 
 .mark {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  color: white;
-  background: #167d4c;
-  font-weight: 750;
-  letter-spacing: -2px;
 }
 
 h1 { margin: 0; font-size: 17px; }
 header p { margin: 2px 0 0; color: #637168; font-size: 12px; }
+
+.site-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: -5px 0 12px;
+  color: #637168;
+  font-size: 11px;
+}
+
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: #9aa59e; }
+.site-status.supported .status-dot { background: #167d4c; }
 
 form {
   overflow: hidden;
@@ -61,4 +68,20 @@ input[type='checkbox'] {
 }
 
 input:disabled { cursor: not-allowed; opacity: 0.45; }
+
+#reset-settings {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid #dce5de;
+  border-radius: 9px;
+  color: #405047;
+  background: white;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#reset-settings:hover { background: #f0f5f1; }
+.privacy { margin: 10px 0 0; color: #718077; font-size: 11px; text-align: center; }
 #status { min-height: 15px; margin: 8px 2px -4px; color: #167d4c; font-size: 11px; text-align: right; }

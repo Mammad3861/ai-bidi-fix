@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS: Settings = {
   chatgptEnabled: true,
   claudeEnabled: true,
   strongRtl: false,
+  debug: false,
 };
 
 async function getContentSettings(): Promise<Settings> {
@@ -30,6 +31,13 @@ function isSettingsKey(key: string): key is keyof Settings {
 
 const site = getCurrentSite();
 let settings: Settings = DEFAULT_SETTINGS;
+let lastDebugAt = 0;
+
+function debugLog(message: string, details?: unknown): void {
+  if (!settings.debug) return;
+  if (details === undefined) console.debug(`[BidiFix AI] ${message}`);
+  else console.debug(`[BidiFix AI] ${message}`, details);
+}
 
 function siteIsEnabled(): boolean {
   if (!site || !settings.enabled) return false;
@@ -47,6 +55,10 @@ function processRoot(root: ParentNode): void {
 
   const uniqueMessages = new Set(messages);
   uniqueMessages.forEach((message) => applyBidiFix(message, settings.strongRtl, site));
+  if (uniqueMessages.size > 0 && Date.now() - lastDebugAt > 2000) {
+    debugLog(`processed ${site} messages`, uniqueMessages.size);
+    lastDebugAt = Date.now();
+  }
 
   const composers = findComposers(root, site);
   if (root instanceof Element) {
@@ -73,7 +85,13 @@ if (site) {
 
   void getContentSettings().then((loaded) => {
     settings = loaded;
+    debugLog(`loaded on ${site}`);
     if (siteIsEnabled()) observer.refresh();
+  });
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if ((message as { type?: string }).type !== 'bidifix:get-site') return;
+    sendResponse({ site });
   });
 
   chrome.storage.onChanged.addListener((changes, areaName) => {

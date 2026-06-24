@@ -17,7 +17,7 @@ function manifestPlugin(): Plugin {
 
 export default defineConfig({
   root: resolve(import.meta.dirname, 'src'),
-  publicDir: false,
+  publicDir: resolve(import.meta.dirname, 'public'),
   plugins: [manifestPlugin()],
   build: {
     outDir: resolve(import.meta.dirname, 'dist'),

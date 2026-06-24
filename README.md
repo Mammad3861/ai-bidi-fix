@@ -22,6 +22,8 @@ The extension handles assistant responses, streamed content, and prompt composer
 - Preserves code blocks, inline code, links, paths, commands, numbers, and technical identifiers as LTR.
 - Uses `MutationObserver` to process newly streamed messages.
 - Provides global, per-site, and Strong RTL settings in a simple popup.
+- Shows whether the current tab is ChatGPT, Claude, or unsupported.
+- Includes an optional Debug Mode for local troubleshooting; it is disabled by default.
 - Stores preferences in `chrome.storage.sync`.
 
 ## Privacy
@@ -70,7 +72,19 @@ npm run build
 
 The unpacked extension is generated in `dist/`.
 
-## Load the extension in Chrome
+## Install from a GitHub release
+
+1. Open the project's **Releases** page on GitHub.
+2. Download the extension ZIP attached to the desired release or pre-release.
+3. Extract the ZIP to a permanent local directory. Chrome cannot load the extension directly from the ZIP file.
+4. Open `chrome://extensions`.
+5. Enable **Developer mode**.
+6. Click **Load unpacked** and select the extracted directory containing `manifest.json`.
+7. Open or refresh ChatGPT or Claude.
+
+Chrome does not automatically update manually loaded release ZIPs. To test a newer pre-release, download and extract it into a new directory, remove or reload the previous unpacked version, and select the new directory with **Load unpacked**. Confirm the version shown on `chrome://extensions` before testing.
+
+## Load a local development build
 
 1. Run `npm install` and `npm run build`.
 2. Open `chrome://extensions`.
@@ -81,6 +95,13 @@ The unpacked extension is generated in `dist/`.
 7. Optionally pin BidiFix AI and use its popup to configure site support or Strong RTL mode.
 
 After rebuilding, return to `chrome://extensions`, click **Reload** on BidiFix AI, and refresh the chat tab.
+
+## Tester notes
+
+- The popup identifies the active tab as ChatGPT, Claude, or unsupported.
+- Debug Mode is off by default. Enable it only when collecting troubleshooting output from DevTools, then turn it off again.
+- **Reset settings** restores the global, per-site, Strong RTL, and Debug Mode defaults.
+- Before reporting a rendering issue, reproduce it with the smallest non-sensitive text sample possible.
 
 ## Manual testing
 

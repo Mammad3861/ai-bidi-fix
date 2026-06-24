@@ -2,6 +2,22 @@
 
 All notable changes to BidiFix AI are documented in this file.
 
+## [Unreleased] - 0.1.1
+
+### Added
+
+- Current-site status in the popup for ChatGPT, Claude, and unsupported pages.
+- Debug Mode setting, disabled by default.
+- Reset Settings action and a concise popup privacy notice.
+- Chrome extension icons at 16, 48, and 128 pixels.
+- GitHub bug report and feature request templates.
+- Expanded tester installation and manual QA documentation.
+
+### Changed
+
+- Refined popup layout and status feedback for testers.
+- Runtime diagnostics are silent unless Debug Mode is enabled.
+
 ## [0.1.0] - 2026-06-24
 
 Initial public MVP release.

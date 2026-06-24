@@ -10,12 +10,17 @@
   <body>
     <main>
       <header>
-        <div class="mark" aria-hidden="true">بA</div>
+        <img class="mark" src="/icons/icon-48.png" alt="" width="42" height="42" />
         <div>
           <h1>BidiFix AI</h1>
           <p>Clearer mixed-direction chat text</p>
         </div>
       </header>
+
+      <div class="site-status" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span>Current site: <strong id="current-site">Checking…</strong></span>
+      </div>
 
       <form id="settings-form">
         <label class="setting primary">
@@ -37,7 +42,13 @@
           <span><strong>Strong RTL mode</strong><small>Prefer RTL when any Persian or Arabic is present</small></span>
           <input type="checkbox" name="strongRtl" />
         </label>
+        <label class="setting">
+          <span><strong>Debug mode</strong><small>Log processing details to DevTools</small></span>
+          <input type="checkbox" name="debug" />
+        </label>
       </form>
+      <button id="reset-settings" type="button">Reset settings</button>
+      <p class="privacy">No text leaves your browser.</p>
       <p id="status" role="status" aria-live="polite"></p>
     </main>
   </body>

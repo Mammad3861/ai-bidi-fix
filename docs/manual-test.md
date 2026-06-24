@@ -11,6 +11,9 @@ Complete this checklist against the production build before publishing a release
 - [ ] Load the generated `dist/` directory from `chrome://extensions`.
 - [ ] Reload the extension and hard-refresh open ChatGPT and Claude tabs.
 - [ ] Confirm the popup enables and disables the extension and each supported site.
+- [ ] Confirm the popup identifies ChatGPT, Claude, and an unsupported tab correctly.
+- [ ] Confirm Debug Mode defaults to off and produces logs only after being enabled.
+- [ ] Change settings, click **Reset settings**, and confirm all defaults are restored.
 
 ## Test prompt
 

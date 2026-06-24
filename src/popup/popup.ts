@@ -1,7 +1,15 @@
-import { getSettings, isSettingsKey, updateSettings, type Settings } from '../shared/settings';
+import {
+  getSettings,
+  isSettingsKey,
+  resetSettings,
+  updateSettings,
+  type Settings,
+} from '../shared/settings';
 
 const form = document.querySelector<HTMLFormElement>('#settings-form');
 const status = document.querySelector<HTMLElement>('#status');
+const currentSite = document.querySelector<HTMLElement>('#current-site');
+const resetButton = document.querySelector<HTMLButtonElement>('#reset-settings');
 
 function getInput(key: keyof Settings): HTMLInputElement | null {
   return form?.elements.namedItem(key) as HTMLInputElement | null;
@@ -15,7 +23,7 @@ function render(settings: Settings): void {
     }
   }
   const enabled = settings.enabled;
-  (['chatgptEnabled', 'claudeEnabled', 'strongRtl'] as const).forEach((key) => {
+  (['chatgptEnabled', 'claudeEnabled', 'strongRtl', 'debug'] as const).forEach((key) => {
     const input = getInput(key);
     if (input) input.disabled = !enabled;
   });
@@ -38,4 +46,35 @@ form?.addEventListener('change', (event) => {
   });
 });
 
+resetButton?.addEventListener('click', () => {
+  void resetSettings().then(async () => {
+    render(await getSettings());
+    showStatus('Settings reset');
+  });
+});
+
+async function renderCurrentSite(): Promise<void> {
+  if (!currentSite) return;
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) {
+    currentSite.textContent = 'Unsupported site';
+    return;
+  }
+
+  try {
+    const response = (await chrome.tabs.sendMessage(tab.id, {
+      type: 'bidifix:get-site',
+    })) as { site?: 'chatgpt' | 'claude' };
+    if (response.site === 'chatgpt' || response.site === 'claude') {
+      currentSite.textContent = response.site === 'chatgpt' ? 'ChatGPT' : 'Claude';
+      currentSite.closest('.site-status')?.classList.add('supported');
+    } else {
+      currentSite.textContent = 'Unsupported site';
+    }
+  } catch {
+    currentSite.textContent = 'Unsupported site';
+  }
+}
+
 void getSettings().then(render);
+void renderCurrentSite();
