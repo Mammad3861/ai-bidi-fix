@@ -25,29 +25,40 @@ const CLAUDE_PROSE_SELECTORS = [
   '[class*="prose"]',
 ] as const;
 
-const CLAUDE_FALLBACK_SELECTORS = [
-  'main article',
-  'main [role="article"]',
-  'main div[class*="grid"]',
+const CLAUDE_TEXT_CANDIDATE_SELECTORS = [
+  'p',
+  'li',
+  'blockquote',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'div',
+  'span',
+  'article',
+  '[role="article"]',
+  ...CLAUDE_MESSAGE_SELECTORS,
+  ...CLAUDE_PROSE_SELECTORS,
 ] as const;
 
-const CLAUDE_CONVERSATION_SELECTOR = 'main, [role="main"], [data-testid*="conversation"]';
 const CLAUDE_EXCLUDED_SELECTOR = [
-  '[data-testid="user-message"]',
-  '[data-testid*="user-message"]',
-  '[data-testid*="human-message"]',
-  '[data-testid*="user"]',
-  '[data-testid*="human"]',
-  '[data-message-author-role="user"]',
   '#prompt-textarea',
   'form',
   'textarea',
   'input',
   '[contenteditable="true"]',
+  '[role="textbox"]',
+  'button',
   'nav',
   'aside',
   '[role="dialog"]',
+  'pre',
+  'code',
 ].join(',');
+
+const CLAUDE_RTL_CHARACTER = /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/u;
 
 const COMPOSER_SELECTOR = [
   '#prompt-textarea',
@@ -87,31 +98,64 @@ function addSelectorMatches(
   }
 }
 
-function isLikelyClaudeAssistantContainer(element: HTMLElement): boolean {
-  if (!element.closest(CLAUDE_CONVERSATION_SELECTOR)) return false;
-  if (element.closest(CLAUDE_EXCLUDED_SELECTOR)) return false;
-  const text = element.textContent?.trim() ?? '';
-  if (!text) return false;
-
-  const explicit = element.matches(
-    [...CLAUDE_MESSAGE_SELECTORS, ...CLAUDE_PROSE_SELECTORS].join(','),
+function hasDirectRtlText(element: HTMLElement): boolean {
+  return [...element.childNodes].some(
+    (node) => node.nodeType === Node.TEXT_NODE && CLAUDE_RTL_CHARACTER.test(node.textContent ?? ''),
   );
-  if (explicit) return true;
+}
 
-  // Broad layout fallbacks are accepted only for RTL content and only when
-  // they do not contain a user message or composer region.
-  if (!element.matches(CLAUDE_FALLBACK_SELECTORS.join(','))) return false;
-  if (element.querySelector(CLAUDE_EXCLUDED_SELECTOR)) return false;
-  const hasRtl = /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/u.test(text);
-  return hasRtl;
+function isAllowedClaudeTextContainer(element: HTMLElement): boolean {
+  const pageMain = document.querySelector('main, [role="main"]');
+  if (pageMain ? !element.closest('main, [role="main"]') : !document.body?.contains(element)) {
+    return false;
+  }
+  if (element.closest(CLAUDE_EXCLUDED_SELECTOR)) return false;
+  return CLAUDE_RTL_CHARACTER.test(element.textContent ?? '');
 }
 
 function findClaudeMessages(root: ParentNode): HTMLElement[] {
   const candidates = new Set<HTMLElement>();
-  addSelectorMatches(root, CLAUDE_MESSAGE_SELECTORS, candidates);
-  addSelectorMatches(root, CLAUDE_PROSE_SELECTORS, candidates);
-  addSelectorMatches(root, CLAUDE_FALLBACK_SELECTORS, candidates);
-  return [...candidates].filter(isLikelyClaudeAssistantContainer);
+  const pageMain = document.querySelector<HTMLElement>('main, [role="main"]');
+  const searchRoot =
+    root instanceof Document
+      ? pageMain ?? document.body
+      : root instanceof Element && root.closest('main, [role="main"]')
+        ? root
+        : root instanceof Element && pageMain && root.contains(pageMain)
+          ? pageMain
+          : pageMain ?? document.body;
+
+  if (!searchRoot) return [];
+  addSelectorMatches(searchRoot, CLAUDE_TEXT_CANDIDATE_SELECTORS, candidates);
+
+  const allowed = [...candidates].filter(isAllowedClaudeTextContainer);
+  const directTextContainers = allowed.filter(hasDirectRtlText);
+  if (directTextContainers.length > 0) {
+    const usefulContainers = new Set(directTextContainers);
+    directTextContainers.forEach((element) => {
+      const parent = element.parentElement;
+      if (
+        parent &&
+        parent !== pageMain &&
+        parent.matches(CLAUDE_TEXT_CANDIDATE_SELECTORS.join(',')) &&
+        isAllowedClaudeTextContainer(parent)
+      ) {
+        usefulContainers.add(parent);
+      }
+    });
+    return [...usefulContainers];
+  }
+
+  // Last resort for unusual Claude markup: use the smallest RTL candidate.
+  return allowed.filter(
+    (element) =>
+      ![...element.children].some(
+        (child) =>
+          child instanceof HTMLElement &&
+          child.matches(CLAUDE_TEXT_CANDIDATE_SELECTORS.join(',')) &&
+          isAllowedClaudeTextContainer(child),
+      ),
+  );
 }
 
 export function findAssistantMessages(root: ParentNode, site: SupportedSite): HTMLElement[] {
@@ -130,14 +174,8 @@ export function findContainingAssistantMessage(
     return element.closest<HTMLElement>(CHATGPT_MESSAGE_SELECTORS.join(','));
   }
 
-  const candidate = element.closest<HTMLElement>(
-    [
-      ...CLAUDE_MESSAGE_SELECTORS,
-      ...CLAUDE_PROSE_SELECTORS,
-      ...CLAUDE_FALLBACK_SELECTORS,
-    ].join(','),
-  );
-  return candidate && isLikelyClaudeAssistantContainer(candidate) ? candidate : null;
+  const candidate = element.closest<HTMLElement>(CLAUDE_TEXT_CANDIDATE_SELECTORS.join(','));
+  return candidate && isAllowedClaudeTextContainer(candidate) ? candidate : null;
 }
 
 function isLikelyComposer(element: HTMLElement, site: SupportedSite): boolean {

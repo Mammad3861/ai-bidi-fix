@@ -8,6 +8,12 @@
   text-align: right !important;
 }
 
+[data-bidifix-direction='rtl'] {
+  direction: rtl !important;
+  text-align: right !important;
+  unicode-bidi: plaintext !important;
+}
+
 [data-bidifix-message='true'] [data-bidifix-direction='ltr'] {
   direction: ltr !important;
   text-align: left !important;
