@@ -1,6 +1,6 @@
 import './styles.css';
 import { applyBidiFix, clearBidiFix } from './bidi';
-import { findAssistantMessages, isInsideAssistantMessage } from './detector';
+import { findAssistantMessages, findContainingAssistantMessage } from './detector';
 import { createBidiObserver } from './observer';
 import type { Settings } from '../shared/settings';
 import { getCurrentSite } from '../shared/sites';
@@ -35,8 +35,8 @@ function processRoot(root: ParentNode): void {
   if (!site || !siteIsEnabled()) return;
 
   const messages = findAssistantMessages(root, site);
-  if (root instanceof Element && isInsideAssistantMessage(root, site)) {
-    const containingMessage = findAssistantMessages(document, site).find((message) => message.contains(root));
+  if (root instanceof Element) {
+    const containingMessage = findContainingAssistantMessage(root, site);
     if (containingMessage) messages.push(containingMessage);
   }
 
