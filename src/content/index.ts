@@ -1,6 +1,11 @@
 import './styles.css';
-import { applyBidiFix, clearBidiFix } from './bidi';
-import { findAssistantMessages, findContainingAssistantMessage } from './detector';
+import { applyBidiFix, applyComposerFix, clearBidiFix } from './bidi';
+import {
+  findAssistantMessages,
+  findComposers,
+  findContainingAssistantMessage,
+  findContainingComposer,
+} from './detector';
 import { createBidiObserver } from './observer';
 import type { Settings } from '../shared/settings';
 import { getCurrentSite } from '../shared/sites';
@@ -41,10 +46,27 @@ function processRoot(root: ParentNode): void {
   }
 
   new Set(messages).forEach((message) => applyBidiFix(message, settings.strongRtl));
+
+  const composers = findComposers(root, site);
+  if (root instanceof Element) {
+    const containingComposer = findContainingComposer(root, site);
+    if (containingComposer) composers.push(containingComposer);
+  }
+  new Set(composers).forEach(applyComposerFix);
 }
 
 if (site) {
   const observer = createBidiObserver(processRoot);
+
+  document.addEventListener(
+    'input',
+    (event) => {
+      if (!siteIsEnabled() || !(event.target instanceof Element)) return;
+      const composer = findContainingComposer(event.target, site);
+      if (composer) applyComposerFix(composer);
+    },
+    true,
+  );
 
   void getContentSettings().then((loaded) => {
     settings = loaded;

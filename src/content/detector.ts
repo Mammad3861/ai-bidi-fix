@@ -36,6 +36,15 @@ const CLAUDE_EXCLUDED_SELECTOR = [
   '[role="dialog"]',
 ].join(',');
 
+const COMPOSER_SELECTOR = [
+  '#prompt-textarea',
+  'textarea',
+  'input[type="text"]',
+  'input:not([type])',
+  '[contenteditable="true"]',
+  '[role="textbox"]',
+].join(',');
+
 export const TEXT_BLOCK_SELECTOR = [
   'p',
   'li',
@@ -103,4 +112,50 @@ export function findContainingAssistantMessage(
     [...CLAUDE_MESSAGE_SELECTORS, ...CLAUDE_PROSE_SELECTORS].join(','),
   );
   return candidate && isLikelyClaudeAssistantContainer(candidate) ? candidate : null;
+}
+
+function isLikelyComposer(element: HTMLElement, site: SupportedSite): boolean {
+  if (element instanceof HTMLTextAreaElement) return element.closest('form') !== null;
+  if (element instanceof HTMLInputElement) {
+    const hint = [
+      element.id,
+      element.name,
+      element.placeholder,
+      element.getAttribute('aria-label'),
+      element.getAttribute('data-testid'),
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return element.closest('form') !== null && /(prompt|message|chat|ask)/.test(hint);
+  }
+
+  const editable = element.matches('[contenteditable="true"], [role="textbox"]');
+  if (!editable) return false;
+  if (element.closest('[data-bidifix-message="true"]')) return false;
+
+  if (site === 'chatgpt') {
+    return element.id === 'prompt-textarea' || element.closest('form') !== null;
+  }
+
+  return (
+    element.closest('form') !== null ||
+    element.classList.contains('ProseMirror') ||
+    element.hasAttribute('data-placeholder')
+  );
+}
+
+export function findComposers(root: ParentNode, site: SupportedSite): HTMLElement[] {
+  const matches = new Set<HTMLElement>();
+  if (root instanceof Element && root.matches(COMPOSER_SELECTOR)) matches.add(root as HTMLElement);
+  root.querySelectorAll<HTMLElement>(COMPOSER_SELECTOR).forEach((element) => matches.add(element));
+  return [...matches].filter((element) => isLikelyComposer(element, site));
+}
+
+export function findContainingComposer(
+  element: Element,
+  site: SupportedSite,
+): HTMLElement | null {
+  const candidate = element.closest<HTMLElement>(COMPOSER_SELECTOR);
+  return candidate && isLikelyComposer(candidate, site) ? candidate : null;
 }
