@@ -45,7 +45,7 @@ function processRoot(root: ParentNode): void {
     if (containingMessage) messages.push(containingMessage);
   }
 
-  new Set(messages).forEach((message) => applyBidiFix(message, settings.strongRtl));
+  new Set(messages).forEach((message) => applyBidiFix(message, settings.strongRtl, site));
 
   const composers = findComposers(root, site);
   if (root instanceof Element) {
@@ -56,6 +56,7 @@ function processRoot(root: ParentNode): void {
 }
 
 if (site) {
+  if (site === 'claude') document.documentElement.dataset.bidifixSite = 'claude';
   const observer = createBidiObserver(processRoot);
 
   document.addEventListener(

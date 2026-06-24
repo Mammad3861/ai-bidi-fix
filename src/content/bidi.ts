@@ -1,4 +1,5 @@
 import { TEXT_BLOCK_SELECTOR } from './detector';
+import type { SupportedSite } from '../shared/sites';
 
 const RTL_CHARACTER = /[\u0590-\u05ff\u0600-\u06ff\u0700-\u074f\u0750-\u077f\u0780-\u07bf\u08a0-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/gu;
 const LTR_CHARACTER = /[A-Za-z\u00c0-\u02af]/g;
@@ -113,14 +114,35 @@ function unwrapInlineLtr(root: ParentNode): void {
   });
 }
 
-export function applyBidiFix(message: HTMLElement, strongRtl: boolean): void {
+function hasDirectReadableText(element: HTMLElement): boolean {
+  return [...element.childNodes].some(
+    (node) => node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()),
+  );
+}
+
+export function applyBidiFix(
+  message: HTMLElement,
+  strongRtl: boolean,
+  site: SupportedSite,
+): void {
   message.dataset.bidifixMessage = 'true';
   message.dataset.bidifixProcessed = 'true';
+  if (site === 'claude') message.dataset.bidifixSite = 'claude';
   markTechnicalContent(message);
 
   const blocks = new Set<HTMLElement>();
   if (message.matches(TEXT_BLOCK_SELECTOR)) blocks.add(message);
   message.querySelectorAll<HTMLElement>(TEXT_BLOCK_SELECTOR).forEach((block) => blocks.add(block));
+
+  if (site === 'claude') {
+    // Claude sometimes emits prose as nested divs without p/li semantics.
+    // Include the detected container itself and divs with direct text nodes;
+    // the technical-content exclusions below still protect code and controls.
+    blocks.add(message);
+    message.querySelectorAll<HTMLElement>('div').forEach((div) => {
+      if (hasDirectReadableText(div)) blocks.add(div);
+    });
+  }
 
   // Claude occasionally streams prose as bare spans instead of paragraph tags.
   // Process those leaf spans and their nearest layout container without adding
@@ -184,6 +206,7 @@ export function clearBidiFix(root: ParentNode = document): void {
   });
   root.querySelectorAll<HTMLElement>('[data-bidifix-message]').forEach((element) => {
     delete element.dataset.bidifixMessage;
+    delete element.dataset.bidifixSite;
     delete element.dataset.bidifixProcessed;
   });
 }

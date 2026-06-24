@@ -39,3 +39,16 @@
   direction: rtl !important;
   text-align: right !important;
 }
+
+/* Claude-only reinforcement for its frequently changing prose/layout styles. */
+html[data-bidifix-site='claude'] [data-bidifix-message='true'][data-bidifix-direction='rtl'],
+html[data-bidifix-site='claude'] [data-bidifix-message='true'] [data-bidifix-direction='rtl'] {
+  direction: rtl !important;
+  unicode-bidi: plaintext !important;
+  text-align: right !important;
+}
+
+html[data-bidifix-site='claude'] [data-bidifix-inline-ltr='true'] {
+  direction: ltr !important;
+  unicode-bidi: isolate !important;
+}
