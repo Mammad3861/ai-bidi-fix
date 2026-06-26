@@ -22,6 +22,26 @@ code[data-bidifix-direction='rtl'],
   unicode-bidi: plaintext !important;
 }
 
+[data-bidifix-code-prose='true'] {
+  unicode-bidi: plaintext !important;
+}
+
+[data-bidifix-line='true'] {
+  display: inline-block !important;
+  min-width: 100% !important;
+  unicode-bidi: plaintext !important;
+}
+
+[data-bidifix-line='true'][data-bidifix-direction='rtl'] {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+[data-bidifix-line='true'][data-bidifix-direction='ltr'] {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
 [data-bidifix-message='true'] [data-bidifix-direction='ltr'] {
   direction: ltr !important;
   text-align: left !important;

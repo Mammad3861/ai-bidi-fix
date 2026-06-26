@@ -27,12 +27,13 @@ const INLINE_LTR_SKIP_SELECTOR = [
 ].join(',');
 const CODE_LIKE_SELECTOR = 'pre, code, [class*="font-mono"]';
 const INLINE_CODE_SELECTOR = 'code:not(pre code)';
+const DIRECT_TEXT_CONTAINER_SELECTOR = 'div, span';
 
 const CODE_KEYWORD = /\b(?:import|export|function|class|const|let|var|return|if|else|for|while|switch|case|try|catch|interface|type|enum|async|await|def|from|public|private|protected|static|new|extends|implements)\b/;
 const SHELL_COMMAND = /(?:^|\n)\s*(?:npm|pnpm|yarn|node|npx|git|cd|mkdir|rm|cp|mv|python|pip|curl|docker|deno|bun)\s+[\w./:@-]/;
 const HTML_OR_XML_TAG = /<\/?[A-Za-z][^>\n]{0,120}>/;
 const CSS_DECLARATION = /\b[a-z-]+\s*:\s*[^;\n{}]+;/i;
-const JSON_OR_OBJECT_SYNTAX = /["'][\w-]+["']\s*:|^\s*[\[{][\s\S]*[\]}]\s*$/;
+const JSON_OR_OBJECT_SYNTAX = /["'][\w-]+["']\s*:|^\s*(?:\{|\[)[\s\S]*(?:\}|\])\s*$/;
 const YAML_OR_TOML_SYNTAX = /(?:^|\n)\s*[A-Za-z0-9_.-]+\s*[:=]\s*[^:\n]+/;
 const PERSIAN_ARABIC_SENTENCE_WORDS = /(?:[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]{2,}[\s،؛,.!?]+){3,}/u;
 
@@ -74,6 +75,13 @@ function hasRtlText(text: string): boolean {
   RTL_CHARACTER.lastIndex = 0;
   const result = RTL_CHARACTER.test(text);
   RTL_CHARACTER.lastIndex = 0;
+  return result;
+}
+
+function hasLtrText(text: string): boolean {
+  LTR_CHARACTER.lastIndex = 0;
+  const result = LTR_CHARACTER.test(text);
+  LTR_CHARACTER.lastIndex = 0;
   return result;
 }
 
@@ -131,6 +139,24 @@ function isCodeLikeRtlProse(element: HTMLElement): boolean {
   if (!element.matches(CODE_LIKE_SELECTOR)) return false;
   const text = element.textContent?.trim() ?? '';
   return hasRtlText(text) && !isLikelyRealCodeBlock(element, text);
+}
+
+function isMixedNaturalLanguageBlock(element: HTMLElement, text: string): boolean {
+  if (!text.trim()) return false;
+  if (!hasRtlText(text) || !hasLtrText(text)) return false;
+  if (element.matches(CODE_LIKE_SELECTOR)) return !isLikelyRealCodeBlock(element, text);
+
+  const { nonEmptyLines } = lineStats(text);
+  const rtlLineCount = nonEmptyLines.filter(hasRtlText).length;
+  const ltrLineCount = nonEmptyLines.filter((line) => hasLtrText(line) && !hasRtlText(line)).length;
+  return nonEmptyLines.length >= 2 && rtlLineCount > 0 && ltrLineCount > 0;
+}
+
+function shouldUseLineDirection(element: HTMLElement, text: string, codeLikeRtlProse: boolean): boolean {
+  const { nonEmptyLines } = lineStats(text);
+  if (nonEmptyLines.length < 2) return false;
+  if (codeLikeRtlProse) return true;
+  return isMixedNaturalLanguageBlock(element, text);
 }
 
 function markTechnicalContent(root: ParentNode): void {
@@ -197,7 +223,66 @@ function unwrapInlineLtr(root: ParentNode): void {
   });
 }
 
-function hasDirectReadableText(element: HTMLElement): boolean {
+function unwrapLineDirectionSpans(root: ParentNode): void {
+  root.querySelectorAll<HTMLElement>('[data-bidifix-line="true"]').forEach((element) => {
+    element.replaceWith(document.createTextNode(element.textContent ?? ''));
+  });
+}
+
+function makeLineSpan(text: string, strongRtl: boolean): HTMLElement {
+  const span = document.createElement('span');
+  const direction = detectDirection(text, strongRtl);
+  span.dataset.bidifixLine = 'true';
+  span.dataset.bidifixDirection = direction;
+  span.dataset.bidifixProcessed = 'true';
+  setManagedDirection(span, direction);
+  span.textContent = text;
+  if (direction === 'rtl') isolateInlineLtrRuns(span);
+  return span;
+}
+
+function applyLineDirectionSpans(element: HTMLElement, strongRtl: boolean): void {
+  const existingLines = element.querySelectorAll<HTMLElement>('[data-bidifix-line="true"]');
+  if (existingLines.length > 0) {
+    existingLines.forEach((line) => {
+      const direction = detectDirection(line.textContent ?? '', strongRtl);
+      line.dataset.bidifixDirection = direction;
+      setManagedDirection(line, direction);
+      if (direction === 'rtl') isolateInlineLtrRuns(line);
+      else unwrapInlineLtr(line);
+    });
+    return;
+  }
+
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!parent || parent.closest(INLINE_LTR_SKIP_SELECTOR)) return NodeFilter.FILTER_REJECT;
+      if (parent.closest('[data-bidifix-line="true"]')) return NodeFilter.FILTER_REJECT;
+      return (node as Text).data.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    },
+  });
+  const textNodes: Text[] = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+
+  textNodes.forEach((textNode) => {
+    const parts = textNode.data.split(/(\r?\n)/);
+    if (parts.length === 1) return;
+
+    const fragment = document.createDocumentFragment();
+    parts.forEach((part) => {
+      if (!part) return;
+      if (/^\r?\n$/.test(part)) {
+        fragment.append(document.createTextNode(part));
+        return;
+      }
+      fragment.append(makeLineSpan(part, strongRtl));
+    });
+    textNode.replaceWith(fragment);
+  });
+}
+
+function hasDirectTextNode(element: HTMLElement): boolean {
   return [...element.childNodes].some(
     (node) => node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()),
   );
@@ -207,6 +292,18 @@ function collectCodeLikeRtlProseBlocks(message: HTMLElement, blocks: Set<HTMLEle
   if (isCodeLikeRtlProse(message)) blocks.add(message);
   message.querySelectorAll<HTMLElement>(CODE_LIKE_SELECTOR).forEach((element) => {
     if (isCodeLikeRtlProse(element)) blocks.add(element);
+  });
+}
+
+function collectDirectTextBlocks(message: HTMLElement, blocks: Set<HTMLElement>): void {
+  if (message.matches(DIRECT_TEXT_CONTAINER_SELECTOR) && hasDirectTextNode(message)) {
+    blocks.add(message);
+  }
+
+  message.querySelectorAll<HTMLElement>(DIRECT_TEXT_CONTAINER_SELECTOR).forEach((element) => {
+    if (!hasDirectTextNode(element)) return;
+    if (element.closest(INLINE_LTR_SKIP_SELECTOR)) return;
+    blocks.add(element);
   });
 }
 
@@ -223,41 +320,42 @@ export function applyBidiFix(
   const blocks = new Set<HTMLElement>();
   if (message.matches(TEXT_BLOCK_SELECTOR)) blocks.add(message);
   message.querySelectorAll<HTMLElement>(TEXT_BLOCK_SELECTOR).forEach((block) => blocks.add(block));
+  collectDirectTextBlocks(message, blocks);
   collectCodeLikeRtlProseBlocks(message, blocks);
 
   if (site === 'claude') {
     // Claude sometimes emits prose as nested divs without p/li semantics.
-    // Include the detected container itself and divs with direct text nodes;
-    // the technical-content exclusions below still protect code and controls.
-    blocks.add(message);
+    // Include direct-text divs; the technical-content exclusions below still
+    // protect code and controls.
     message.querySelectorAll<HTMLElement>('div').forEach((div) => {
-      if (hasDirectReadableText(div)) blocks.add(div);
+      if (hasDirectTextNode(div)) blocks.add(div);
     });
   }
 
   // Claude occasionally streams prose as bare spans instead of paragraph tags.
-  // Process those leaf spans and their nearest layout container without adding
-  // wrappers or changing the text DOM.
+  // Process those leaf spans without forcing a direction onto broad parents.
   message.querySelectorAll<HTMLElement>('span').forEach((span) => {
     if (!span.textContent?.trim() || span.closest(TECHNICAL_SELECTOR)) return;
     if (span.closest(TEXT_BLOCK_SELECTOR)) return;
     if (span.querySelector(TEXT_BLOCK_SELECTOR)) return;
     blocks.add(span);
-
-    const layoutContainer = span.closest<HTMLElement>('div');
-    if (layoutContainer && message.contains(layoutContainer) && layoutContainer !== message) {
-      blocks.add(layoutContainer);
-    }
   });
 
   blocks.forEach((block) => {
     const codeLikeRtlProse = isCodeLikeRtlProse(block);
     if (!codeLikeRtlProse && block.closest(TECHNICAL_SELECTOR)) return;
-    const direction = codeLikeRtlProse ? 'rtl' : detectDirection(directReadableText(block), strongRtl);
+
+    const text = codeLikeRtlProse ? (block.textContent?.trim() ?? '') : directReadableText(block);
+    const lineLevel = shouldUseLineDirection(block, text, codeLikeRtlProse);
+    const direction = lineLevel ? 'auto' : codeLikeRtlProse ? 'rtl' : detectDirection(text, strongRtl);
+
+    if (codeLikeRtlProse) block.dataset.bidifixCodeProse = 'true';
     block.dataset.bidifixDirection = direction;
     block.dataset.bidifixProcessed = 'true';
     setManagedDirection(block, direction);
-    if (direction === 'rtl') isolateInlineLtrRuns(block);
+
+    if (lineLevel) applyLineDirectionSpans(block, strongRtl);
+    else if (direction === 'rtl') isolateInlineLtrRuns(block);
     else unwrapInlineLtr(block);
   });
 }
@@ -280,6 +378,7 @@ export function applyComposerFix(composer: HTMLElement): void {
 
 export function clearBidiFix(root: ParentNode = document): void {
   unwrapInlineLtr(root);
+  unwrapLineDirectionSpans(root);
   root.querySelectorAll<HTMLElement>('[data-bidifix-composer]').forEach((element) => {
     delete element.dataset.bidifixComposer;
     delete element.dataset.bidifixComposerDirection;
@@ -288,6 +387,7 @@ export function clearBidiFix(root: ParentNode = document): void {
   });
   root.querySelectorAll<HTMLElement>('[data-bidifix-direction]').forEach((element) => {
     delete element.dataset.bidifixDirection;
+    delete element.dataset.bidifixCodeProse;
     delete element.dataset.bidifixProcessed;
     restoreDirection(element);
   });

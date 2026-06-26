@@ -97,6 +97,29 @@ npm run build
 - [ ] Inline technical runs such as `src/content/bidi.ts` and `npm run build` remain visually LTR.
 - [ ] Copy/paste from all three cases preserves the original text and does not add Unicode bidi control characters.
 
+## English-before-Persian mixed block regression
+
+Ask ChatGPT and Claude to output this as one markdown/code-like block, preserving the English lines before the Persian lines:
+
+```text
+Problem:
+The extension currently treats pre/code/font-mono content as always LTR technical content.
+This is correct for real code, but wrong when AI puts Persian/Arabic explanation text inside a code block.
+
+الان چون آیکون خوب شده، اول commit آیکون را انجام بده.
+ولی قبلش این فایل‌ها را هم بررسی کن:
+docs/ICON_PIPELINE.md
+project.godot
+presets.cfg
+```
+
+- [ ] The English `Problem:` section remains readable LTR.
+- [ ] The Persian sentence lines become readable RTL.
+- [ ] `commit` appears in the correct visual position inside the Persian sentence.
+- [ ] File paths such as `docs/ICON_PIPELINE.md`, `project.godot`, and `presets.cfg` remain readable LTR.
+- [ ] The whole block does not get forced into one broad LTR direction.
+- [ ] Copy/paste preserves the original text and does not add Unicode bidi control characters.
+
 ## Regression and privacy checks
 
 - [ ] Copy each response into a plain-text editor and confirm the text is unchanged.
