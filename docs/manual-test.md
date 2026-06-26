@@ -139,6 +139,7 @@ Then later in the same block it contains Persian lines like:
 - [ ] The displayed user prompt card is processed, not only the assistant response.
 - [ ] The English section remains readable LTR.
 - [ ] The Persian lines are readable RTL.
+- [ ] Persian text remains readable even if ChatGPT renders it as standalone child text sections instead of one newline-containing text node.
 - [ ] `commit` appears in the correct visual position inside the Persian sentence.
 - [ ] `docs/ICON_PIPELINE.md`, `project.godot`, and `presets.cfg` remain readable LTR.
 - [ ] The **Edit** button and other ChatGPT controls still work and are not restyled as message text.

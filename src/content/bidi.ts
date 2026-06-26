@@ -22,6 +22,8 @@ const INLINE_LTR_SKIP_SELECTOR = [
   'textarea',
   'input',
   '[contenteditable="true"]',
+  'button',
+  '[role="button"]',
   '[data-bidifix-inline-ltr="true"]',
   '[data-bidifix-technical="true"]',
 ].join(',');
@@ -100,6 +102,15 @@ function textDensityWithoutSpaces(text: string): number {
   return Math.max(text.replace(/\s/g, '').length, 1);
 }
 
+function directTextSectionCount(element: HTMLElement): number {
+  return [...element.childNodes].filter((node) => {
+    if (node.nodeType === Node.TEXT_NODE) return Boolean(node.textContent?.trim());
+    if (!(node instanceof HTMLElement)) return false;
+    if (node.matches(INLINE_LTR_SKIP_SELECTOR)) return false;
+    return Boolean(node.textContent?.trim());
+  }).length;
+}
+
 export function isLikelyRealCodeBlock(element: HTMLElement, text: string): boolean {
   const normalized = text.trim();
   if (!normalized) return false;
@@ -149,12 +160,16 @@ function isMixedNaturalLanguageBlock(element: HTMLElement, text: string): boolea
   const { nonEmptyLines } = lineStats(text);
   const rtlLineCount = nonEmptyLines.filter(hasRtlText).length;
   const ltrLineCount = nonEmptyLines.filter((line) => hasLtrText(line) && !hasRtlText(line)).length;
-  return nonEmptyLines.length >= 2 && rtlLineCount > 0 && ltrLineCount > 0;
+  return (
+    rtlLineCount > 0 &&
+    ltrLineCount > 0 &&
+    (nonEmptyLines.length >= 2 || directTextSectionCount(element) >= 2)
+  );
 }
 
 function shouldUseLineDirection(element: HTMLElement, text: string, codeLikeRtlProse: boolean): boolean {
   const { nonEmptyLines } = lineStats(text);
-  if (nonEmptyLines.length < 2) return false;
+  if (nonEmptyLines.length < 2 && directTextSectionCount(element) < 2) return false;
   if (codeLikeRtlProse) return true;
   return isMixedNaturalLanguageBlock(element, text);
 }
@@ -241,6 +256,19 @@ function makeLineSpan(text: string, strongRtl: boolean): HTMLElement {
   return span;
 }
 
+function appendDirectionalTextPart(
+  fragment: DocumentFragment,
+  text: string,
+  strongRtl: boolean,
+): void {
+  if (!text) return;
+  if (!text.trim()) {
+    fragment.append(document.createTextNode(text));
+    return;
+  }
+  fragment.append(makeLineSpan(text, strongRtl));
+}
+
 function processMixedTextLines(element: HTMLElement, strongRtl: boolean): void {
   const existingLines = element.querySelectorAll<HTMLElement>('[data-bidifix-line="true"]');
   if (existingLines.length > 0) {
@@ -251,7 +279,6 @@ function processMixedTextLines(element: HTMLElement, strongRtl: boolean): void {
       if (direction === 'rtl') isolateInlineLtrRuns(line);
       else unwrapInlineLtr(line);
     });
-    return;
   }
 
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
@@ -267,8 +294,6 @@ function processMixedTextLines(element: HTMLElement, strongRtl: boolean): void {
 
   textNodes.forEach((textNode) => {
     const parts = textNode.data.split(/(\r?\n)/);
-    if (parts.length === 1) return;
-
     const fragment = document.createDocumentFragment();
     parts.forEach((part) => {
       if (!part) return;
@@ -276,7 +301,7 @@ function processMixedTextLines(element: HTMLElement, strongRtl: boolean): void {
         fragment.append(document.createTextNode(part));
         return;
       }
-      fragment.append(makeLineSpan(part, strongRtl));
+      appendDirectionalTextPart(fragment, part, strongRtl);
     });
     textNode.replaceWith(fragment);
   });
