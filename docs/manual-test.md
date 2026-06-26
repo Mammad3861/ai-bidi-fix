@@ -118,6 +118,7 @@ presets.cfg
 - [ ] `commit` appears in the correct visual position inside the Persian sentence.
 - [ ] File paths such as `docs/ICON_PIPELINE.md`, `project.godot`, and `presets.cfg` remain readable LTR.
 - [ ] The whole block does not get forced into one broad LTR direction.
+- [ ] Pasting the same text into the ChatGPT and Claude composers keeps Persian lines readable while English lines remain readable.
 - [ ] Copy/paste preserves the original text and does not add Unicode bidi control characters.
 
 ## Regression and privacy checks

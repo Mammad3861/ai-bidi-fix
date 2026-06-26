@@ -241,7 +241,7 @@ function makeLineSpan(text: string, strongRtl: boolean): HTMLElement {
   return span;
 }
 
-function applyLineDirectionSpans(element: HTMLElement, strongRtl: boolean): void {
+function processMixedTextLines(element: HTMLElement, strongRtl: boolean): void {
   const existingLines = element.querySelectorAll<HTMLElement>('[data-bidifix-line="true"]');
   if (existingLines.length > 0) {
     existingLines.forEach((line) => {
@@ -354,7 +354,7 @@ export function applyBidiFix(
     block.dataset.bidifixProcessed = 'true';
     setManagedDirection(block, direction);
 
-    if (lineLevel) applyLineDirectionSpans(block, strongRtl);
+    if (lineLevel) processMixedTextLines(block, strongRtl);
     else if (direction === 'rtl') isolateInlineLtrRuns(block);
     else unwrapInlineLtr(block);
   });
@@ -367,9 +367,19 @@ function composerText(composer: HTMLElement): string {
   return composer.textContent ?? '';
 }
 
+function detectComposerDirection(text: string): TextDirection {
+  if (!hasRtlText(text)) return 'auto';
+  const { nonEmptyLines } = lineStats(text);
+  const hasMixedMultilineText =
+    nonEmptyLines.length >= 2 &&
+    nonEmptyLines.some(hasRtlText) &&
+    nonEmptyLines.some((line) => hasLtrText(line) && !hasRtlText(line));
+
+  return hasMixedMultilineText ? 'auto' : 'rtl';
+}
+
 export function applyComposerFix(composer: HTMLElement): void {
-  const direction = RTL_CHARACTER.test(composerText(composer)) ? 'rtl' : 'auto';
-  RTL_CHARACTER.lastIndex = 0;
+  const direction = detectComposerDirection(composerText(composer));
   composer.dataset.bidifixComposer = 'true';
   composer.dataset.bidifixComposerDirection = direction;
   composer.dataset.bidifixProcessed = 'true';
