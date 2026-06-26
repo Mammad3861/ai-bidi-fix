@@ -60,3 +60,30 @@ https://claude.ai مراجعه کنم. یک نمونه inline code و یک code 
 - [ ] Confirm the browser console is not receiving BidiFix debug noise.
 - [ ] Confirm DevTools shows no BidiFix network requests.
 - [ ] Confirm the manifest requests only the `storage` permission and supported site matches.
+
+## Code block and monospaced RTL prose regression
+
+Ask ChatGPT and Claude to render both real code and Persian prose inside code blocks:
+
+```text
+Please output these as separate code blocks:
+
+1. Real code:
+const name = "BidiFix AI";
+npm run build
+
+2. Persian prose inside a code block:
+الان چون آیکون خوب شده، اول commit آیکون را انجام بده و فایل‌های docs/ICON_PIPELINE.md و project.godot و presets.cfg را بررسی کن.
+
+3. A normal Persian paragraph:
+فایل src/content/bidi.ts و دستور npm run build باید درست نمایش داده شوند.
+```
+
+- [ ] The real code block remains LTR and left-aligned.
+- [ ] `const name = "BidiFix AI";` remains visually LTR.
+- [ ] `npm run build` remains visually LTR in the real code block.
+- [ ] The Persian prose code block becomes RTL and right-aligned.
+- [ ] File paths such as `docs/ICON_PIPELINE.md`, `project.godot`, and `presets.cfg` remain visually LTR inside the RTL prose code block.
+- [ ] The normal Persian paragraph remains RTL and right-aligned.
+- [ ] Inline technical runs such as `src/content/bidi.ts` and `npm run build` remain visually LTR.
+- [ ] Copy/paste from all three cases preserves the original text and does not add Unicode bidi control characters.

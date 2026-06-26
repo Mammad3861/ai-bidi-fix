@@ -15,8 +15,6 @@ const TECHNICAL_SELECTOR = [
   '[class*="font-mono"]',
 ].join(',');
 const INLINE_LTR_SKIP_SELECTOR = [
-  'pre',
-  'code',
   'kbd',
   'samp',
   'var',
@@ -25,7 +23,18 @@ const INLINE_LTR_SKIP_SELECTOR = [
   'input',
   '[contenteditable="true"]',
   '[data-bidifix-inline-ltr="true"]',
+  '[data-bidifix-technical="true"]',
 ].join(',');
+const CODE_LIKE_SELECTOR = 'pre, code, [class*="font-mono"]';
+const INLINE_CODE_SELECTOR = 'code:not(pre code)';
+
+const CODE_KEYWORD = /\b(?:import|export|function|class|const|let|var|return|if|else|for|while|switch|case|try|catch|interface|type|enum|async|await|def|from|public|private|protected|static|new|extends|implements)\b/;
+const SHELL_COMMAND = /(?:^|\n)\s*(?:npm|pnpm|yarn|node|npx|git|cd|mkdir|rm|cp|mv|python|pip|curl|docker|deno|bun)\s+[\w./:@-]/;
+const HTML_OR_XML_TAG = /<\/?[A-Za-z][^>\n]{0,120}>/;
+const CSS_DECLARATION = /\b[a-z-]+\s*:\s*[^;\n{}]+;/i;
+const JSON_OR_OBJECT_SYNTAX = /["'][\w-]+["']\s*:|^\s*[\[{][\s\S]*[\]}]\s*$/;
+const YAML_OR_TOML_SYNTAX = /(?:^|\n)\s*[A-Za-z0-9_.-]+\s*[:=]\s*[^:\n]+/;
+const PERSIAN_ARABIC_SENTENCE_WORDS = /(?:[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]{2,}[\s،؛,.!?]+){3,}/u;
 
 export type TextDirection = 'rtl' | 'ltr' | 'auto';
 
@@ -46,7 +55,9 @@ function restoreDirection(element: HTMLElement): void {
 
 function directReadableText(element: HTMLElement): string {
   const clone = element.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll(TECHNICAL_SELECTOR).forEach((node) => node.remove());
+  clone.querySelectorAll<HTMLElement>(TECHNICAL_SELECTOR).forEach((node) => {
+    if (node.dataset.bidifixDirection !== 'rtl') node.remove();
+  });
   return clone.textContent?.trim() ?? '';
 }
 
@@ -59,10 +70,82 @@ export function detectDirection(text: string, strongRtl: boolean): TextDirection
   return strongRtl && text.length > 0 ? 'rtl' : 'auto';
 }
 
+function hasRtlText(text: string): boolean {
+  RTL_CHARACTER.lastIndex = 0;
+  const result = RTL_CHARACTER.test(text);
+  RTL_CHARACTER.lastIndex = 0;
+  return result;
+}
+
+function countMatches(text: string, pattern: RegExp): number {
+  return text.match(pattern)?.length ?? 0;
+}
+
+function lineStats(text: string): { lines: string[]; nonEmptyLines: string[]; indentedLines: number } {
+  const lines = text.split(/\r?\n/);
+  const nonEmptyLines = lines.filter((line) => line.trim().length > 0);
+  const indentedLines = nonEmptyLines.filter((line) => /^\s{2,}|\t/.test(line)).length;
+  return { lines, nonEmptyLines, indentedLines };
+}
+
+function textDensityWithoutSpaces(text: string): number {
+  return Math.max(text.replace(/\s/g, '').length, 1);
+}
+
+export function isLikelyRealCodeBlock(element: HTMLElement, text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) return false;
+
+  const { nonEmptyLines, indentedLines } = lineStats(normalized);
+  const charCount = textDensityWithoutSpaces(normalized);
+  const rtlWordCount = countMatches(normalized, /[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]{2,}/gu);
+  const codePunctuationCount = countMatches(normalized, /[{}[\]();=<>|&]/g);
+  const punctuationDensity = codePunctuationCount / charCount;
+  const hasRtl = hasRtlText(normalized);
+  let codeScore = 0;
+  let proseScore = 0;
+
+  if (CODE_KEYWORD.test(normalized)) codeScore += 3;
+  if (SHELL_COMMAND.test(normalized)) codeScore += 2;
+  if (HTML_OR_XML_TAG.test(normalized)) codeScore += 3;
+  if (CSS_DECLARATION.test(normalized)) codeScore += 2;
+  if (JSON_OR_OBJECT_SYNTAX.test(normalized)) codeScore += 2;
+  if (YAML_OR_TOML_SYNTAX.test(normalized) && !hasRtl) codeScore += 1;
+  if (punctuationDensity > 0.08) codeScore += 2;
+  if (punctuationDensity > 0.14) codeScore += 2;
+  if (nonEmptyLines.length >= 3 && indentedLines >= 2) codeScore += 2;
+  if (element.matches(INLINE_CODE_SELECTOR) && !hasRtl) codeScore += 3;
+
+  if (hasRtl) proseScore += 2;
+  if (PERSIAN_ARABIC_SENTENCE_WORDS.test(normalized)) proseScore += 4;
+  if (rtlWordCount >= 4) proseScore += 3;
+  if (rtlWordCount >= 8) proseScore += 2;
+  if (/[،؛؟]/u.test(normalized)) proseScore += 2;
+  if (punctuationDensity < 0.08) proseScore += 1;
+  if (SHELL_COMMAND.test(normalized) && hasRtl && rtlWordCount >= 3) proseScore += 1;
+
+  return codeScore >= proseScore + 2;
+}
+
+function isCodeLikeRtlProse(element: HTMLElement): boolean {
+  if (!element.matches(CODE_LIKE_SELECTOR)) return false;
+  const text = element.textContent?.trim() ?? '';
+  return hasRtlText(text) && !isLikelyRealCodeBlock(element, text);
+}
+
 function markTechnicalContent(root: ParentNode): void {
-  root
-    .querySelectorAll<HTMLElement>('pre, code, kbd, samp, var, a[href], [class*="font-mono"]')
-    .forEach((element) => {
+  root.querySelectorAll<HTMLElement>('kbd, samp, var, a[href]').forEach((element) => {
+    element.dataset.bidifixTechnical = 'true';
+    element.dataset.bidifixProcessed = 'true';
+    setManagedDirection(element, 'ltr');
+  });
+
+  root.querySelectorAll<HTMLElement>(CODE_LIKE_SELECTOR).forEach((element) => {
+    if (isCodeLikeRtlProse(element)) {
+      delete element.dataset.bidifixTechnical;
+      return;
+    }
+
     element.dataset.bidifixTechnical = 'true';
     element.dataset.bidifixProcessed = 'true';
     setManagedDirection(element, 'ltr');
@@ -120,6 +203,13 @@ function hasDirectReadableText(element: HTMLElement): boolean {
   );
 }
 
+function collectCodeLikeRtlProseBlocks(message: HTMLElement, blocks: Set<HTMLElement>): void {
+  if (isCodeLikeRtlProse(message)) blocks.add(message);
+  message.querySelectorAll<HTMLElement>(CODE_LIKE_SELECTOR).forEach((element) => {
+    if (isCodeLikeRtlProse(element)) blocks.add(element);
+  });
+}
+
 export function applyBidiFix(
   message: HTMLElement,
   strongRtl: boolean,
@@ -133,6 +223,7 @@ export function applyBidiFix(
   const blocks = new Set<HTMLElement>();
   if (message.matches(TEXT_BLOCK_SELECTOR)) blocks.add(message);
   message.querySelectorAll<HTMLElement>(TEXT_BLOCK_SELECTOR).forEach((block) => blocks.add(block));
+  collectCodeLikeRtlProseBlocks(message, blocks);
 
   if (site === 'claude') {
     // Claude sometimes emits prose as nested divs without p/li semantics.
@@ -160,8 +251,9 @@ export function applyBidiFix(
   });
 
   blocks.forEach((block) => {
-    if (block.closest(TECHNICAL_SELECTOR)) return;
-    const direction = detectDirection(directReadableText(block), strongRtl);
+    const codeLikeRtlProse = isCodeLikeRtlProse(block);
+    if (!codeLikeRtlProse && block.closest(TECHNICAL_SELECTOR)) return;
+    const direction = codeLikeRtlProse ? 'rtl' : detectDirection(directReadableText(block), strongRtl);
     block.dataset.bidifixDirection = direction;
     block.dataset.bidifixProcessed = 'true';
     setManagedDirection(block, direction);

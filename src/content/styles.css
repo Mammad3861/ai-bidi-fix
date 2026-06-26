@@ -14,6 +14,14 @@
   unicode-bidi: plaintext !important;
 }
 
+pre[data-bidifix-direction='rtl'],
+code[data-bidifix-direction='rtl'],
+[class*='font-mono'][data-bidifix-direction='rtl'] {
+  direction: rtl !important;
+  text-align: right !important;
+  unicode-bidi: plaintext !important;
+}
+
 [data-bidifix-message='true'] [data-bidifix-direction='ltr'] {
   direction: ltr !important;
   text-align: left !important;
@@ -27,6 +35,13 @@
 
 [data-bidifix-message='true'] pre[data-bidifix-technical='true'],
 [data-bidifix-message='true'] pre[data-bidifix-technical='true'] code {
+  direction: ltr !important;
+  unicode-bidi: isolate !important;
+  text-align: left !important;
+}
+
+[data-bidifix-message='true'] code[data-bidifix-technical='true'],
+[data-bidifix-message='true'] [class*='font-mono'][data-bidifix-technical='true'] {
   direction: ltr !important;
   unicode-bidi: isolate !important;
   text-align: left !important;
