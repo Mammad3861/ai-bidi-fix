@@ -6,7 +6,11 @@ const CHATGPT_MESSAGE_SELECTORS = [
   'article[data-testid^="conversation-turn-"] [data-message-author-role="assistant"]',
   'article[data-testid^="conversation-turn-"] [data-message-author-role="user"]',
   'article[data-testid^="conversation-turn-"] [class~="whitespace-pre-wrap"]',
+  'article[data-testid^="conversation-turn-"] [class*="whitespace-pre-wrap"]',
   'main article [class~="whitespace-pre-wrap"]',
+  'main article [class*="whitespace-pre-wrap"]',
+  '[data-message-author-role="user"] [class~="whitespace-pre-wrap"]',
+  '[data-message-author-role="user"] [class*="whitespace-pre-wrap"]',
 ] as const;
 
 const CHATGPT_EXCLUDED_SELECTOR = [
@@ -102,6 +106,7 @@ export const TEXT_BLOCK_SELECTOR = [
   'dd',
   '[data-testid*="markdown"]',
   '[class~="whitespace-pre-wrap"]',
+  '[class*="whitespace-pre-wrap"]',
 ].join(',');
 
 function addSelectorMatches(
