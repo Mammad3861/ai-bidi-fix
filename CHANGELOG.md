@@ -2,7 +2,17 @@
 
 All notable changes to BidiFix AI are documented in this file.
 
-## [Unreleased] - 0.1.1
+## [Unreleased]
+
+## [0.1.2] - 2026-06-26
+
+### Fixed
+
+- Fixed Persian/Arabic RTL prose inside code blocks, `pre` blocks, and monospaced containers.
+- Kept real code blocks LTR with technical bidi isolation.
+- Improved inline LTR handling for file paths, commands, URLs, and English technical phrases inside RTL prose code blocks.
+
+## [0.1.1] - 2026-06-26
 
 ### Added
 
