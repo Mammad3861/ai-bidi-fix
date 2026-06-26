@@ -121,6 +121,29 @@ presets.cfg
 - [ ] Pasting the same text into the ChatGPT and Claude composers keeps Persian lines readable while English lines remain readable.
 - [ ] Copy/paste preserves the original text and does not add Unicode bidi control characters.
 
+## ChatGPT displayed user prompt card regression
+
+Send this prompt in ChatGPT, then inspect the displayed user message card with the **Edit** button:
+
+```text
+Problem:
+The extension currently treats pre/code/font-mono content as always LTR technical content.
+This is correct for real code, but wrong when AI puts Persian/Arabic explanation text inside a code block.
+
+Then later in the same block it contains Persian lines like:
+
+الان چون آیکون خوب شده، اول commit آیکون را انجام بده.
+ولی قبلش docs/ICON_PIPELINE.md و project.godot و presets.cfg را بررسی کن.
+```
+
+- [ ] The displayed user prompt card is processed, not only the assistant response.
+- [ ] The English section remains readable LTR.
+- [ ] The Persian lines are readable RTL.
+- [ ] `commit` appears in the correct visual position inside the Persian sentence.
+- [ ] `docs/ICON_PIPELINE.md`, `project.godot`, and `presets.cfg` remain readable LTR.
+- [ ] The **Edit** button and other ChatGPT controls still work and are not restyled as message text.
+- [ ] The active composer still behaves as expected after sending the prompt.
+
 ## Regression and privacy checks
 
 - [ ] Copy each response into a plain-text editor and confirm the text is unchanged.

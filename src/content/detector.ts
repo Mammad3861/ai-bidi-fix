@@ -2,8 +2,25 @@ import type { SupportedSite } from '../shared/sites';
 
 const CHATGPT_MESSAGE_SELECTORS = [
   '[data-message-author-role="assistant"]',
+  '[data-message-author-role="user"]',
   'article[data-testid^="conversation-turn-"] [data-message-author-role="assistant"]',
+  'article[data-testid^="conversation-turn-"] [data-message-author-role="user"]',
+  'article[data-testid^="conversation-turn-"] [class~="whitespace-pre-wrap"]',
+  'main article [class~="whitespace-pre-wrap"]',
 ] as const;
+
+const CHATGPT_EXCLUDED_SELECTOR = [
+  '#prompt-textarea',
+  'form',
+  'textarea',
+  'input',
+  '[contenteditable="true"]',
+  '[role="textbox"]',
+  'button',
+  'nav',
+  'aside',
+  '[role="dialog"]',
+].join(',');
 
 // Prefer semantic/data attributes. Class-based selectors are retained only as
 // fallbacks because Claude changes generated class names frequently.
@@ -158,12 +175,27 @@ function findClaudeMessages(root: ParentNode): HTMLElement[] {
   );
 }
 
-export function findAssistantMessages(root: ParentNode, site: SupportedSite): HTMLElement[] {
-  if (site === 'claude') return findClaudeMessages(root);
+function isAllowedChatGptMessage(element: HTMLElement): boolean {
+  const pageMain = document.querySelector('main, [role="main"]');
+  if (pageMain ? !element.closest('main, [role="main"]') : !document.body?.contains(element)) {
+    return false;
+  }
+  if (element.closest(CHATGPT_EXCLUDED_SELECTOR)) return false;
+  if (!element.closest('article[data-testid^="conversation-turn-"], [data-message-author-role]')) {
+    return false;
+  }
+  return Boolean(element.textContent?.trim());
+}
 
+function findChatGptMessages(root: ParentNode): HTMLElement[] {
   const matches = new Set<HTMLElement>();
   addSelectorMatches(root, CHATGPT_MESSAGE_SELECTORS, matches);
-  return [...matches];
+  return [...matches].filter(isAllowedChatGptMessage);
+}
+
+export function findAssistantMessages(root: ParentNode, site: SupportedSite): HTMLElement[] {
+  if (site === 'claude') return findClaudeMessages(root);
+  return findChatGptMessages(root);
 }
 
 export function findContainingAssistantMessage(
@@ -171,7 +203,8 @@ export function findContainingAssistantMessage(
   site: SupportedSite,
 ): HTMLElement | null {
   if (site === 'chatgpt') {
-    return element.closest<HTMLElement>(CHATGPT_MESSAGE_SELECTORS.join(','));
+    const candidate = element.closest<HTMLElement>(CHATGPT_MESSAGE_SELECTORS.join(','));
+    return candidate && isAllowedChatGptMessage(candidate) ? candidate : null;
   }
 
   const candidate = element.closest<HTMLElement>(CLAUDE_TEXT_CANDIDATE_SELECTORS.join(','));

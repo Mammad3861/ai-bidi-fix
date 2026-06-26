@@ -10,6 +10,7 @@ All notable changes to BidiFix AI are documented in this file.
 
 - Fixed Persian/Arabic RTL prose inside code blocks, `pre` blocks, and monospaced containers.
 - Fixed mixed English-first prompt/code-like blocks so later Persian/Arabic lines receive their own RTL direction.
+- Fixed ChatGPT displayed user prompt cards so mixed English-first prompts receive the same line-level bidi handling as assistant messages.
 - Kept real code blocks LTR with technical bidi isolation.
 - Improved inline LTR handling for file paths, commands, URLs, and English technical phrases inside RTL prose code blocks.
 
