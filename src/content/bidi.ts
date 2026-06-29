@@ -34,6 +34,7 @@ const PROCESSED_VERSION = '0.1.2-performance-safe';
 const MAX_INLINE_ISOLATION_TEXT_LENGTH = 2000;
 const MAX_LINE_WRAP_TEXT_LENGTH = 4000;
 const MAX_LINE_WRAPPERS_PER_MESSAGE = 80;
+const MAX_BLOCKS_PER_MESSAGE = 80;
 
 const CODE_KEYWORD = /\b(?:import|export|function|class|const|let|var|return|if|else|for|while|switch|case|try|catch|interface|type|enum|async|await|def|from|public|private|protected|static|new|extends|implements)\b/;
 const SHELL_COMMAND = /(?:^|\n)\s*(?:npm|pnpm|yarn|node|npx|git|cd|mkdir|rm|cp|mv|python|pip|curl|docker|deno|bun)\s+[\w./:@-]/;
@@ -337,6 +338,10 @@ function processMixedTextLinesWithBudget(
   if (budget.remaining < 0) budget.remaining = 0;
 }
 
+function isChatGptDisplayedUserPrompt(message: HTMLElement): boolean {
+  return Boolean(message.closest('[data-message-author-role="user"]'));
+}
+
 function hasDirectTextNode(element: HTMLElement): boolean {
   return [...element.childNodes].some(
     (node) => node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()),
@@ -370,6 +375,7 @@ export function applyBidiFix(
   message.dataset.bidifixMessage = 'true';
   message.dataset.bidifixProcessed = 'true';
   if (site === 'claude') message.dataset.bidifixSite = 'claude';
+  if (!options.experimentalMixedPromptFix) unwrapLineDirectionSpans(message);
   markTechnicalContent(message);
   const lineWrapBudget = { remaining: MAX_LINE_WRAPPERS_PER_MESSAGE };
 
@@ -397,7 +403,7 @@ export function applyBidiFix(
     blocks.add(span);
   });
 
-  blocks.forEach((block) => {
+  [...blocks].slice(0, MAX_BLOCKS_PER_MESSAGE).forEach((block) => {
     const codeLikeRtlProse = isCodeLikeRtlProse(block);
     if (!codeLikeRtlProse && block.closest(TECHNICAL_SELECTOR)) return;
 
@@ -424,8 +430,12 @@ export function applyBidiFix(
     block.dataset.bidifixTextSignature = signature;
     setManagedDirection(block, direction);
 
+    const allowInlineIsolation =
+      text.length <= MAX_INLINE_ISOLATION_TEXT_LENGTH &&
+      (site !== 'chatgpt' || !isChatGptDisplayedUserPrompt(message) || options.experimentalMixedPromptFix);
+
     if (lineLevel) processMixedTextLinesWithBudget(block, options.strongRtl, lineWrapBudget);
-    else if (direction === 'rtl' && text.length <= MAX_INLINE_ISOLATION_TEXT_LENGTH) {
+    else if (direction === 'rtl' && allowInlineIsolation) {
       isolateInlineLtrRuns(block);
     }
     else unwrapInlineLtr(block);

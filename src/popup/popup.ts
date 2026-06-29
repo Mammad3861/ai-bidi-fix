@@ -24,7 +24,14 @@ function render(settings: Settings): void {
   }
   const enabled = settings.enabled;
   (
-    ['chatgptEnabled', 'claudeEnabled', 'strongRtl', 'experimentalMixedPromptFix', 'debug'] as const
+    [
+      'chatgptEnabled',
+      'claudeEnabled',
+      'strongRtl',
+      'composerDirectionFix',
+      'experimentalMixedPromptFix',
+      'debug',
+    ] as const
   ).forEach((key) => {
     const input = getInput(key);
     if (input) input.disabled = !enabled;

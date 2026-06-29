@@ -12,6 +12,7 @@ Complete this checklist against the production build before publishing a release
 - [ ] Reload the extension and hard-refresh open ChatGPT and Claude tabs.
 - [ ] Confirm the popup enables and disables the extension and each supported site.
 - [ ] Confirm the popup identifies ChatGPT, Claude, and an unsupported tab correctly.
+- [ ] Confirm **Composer direction fix** defaults to off.
 - [ ] Confirm **Experimental mixed prompt fix** defaults to off.
 - [ ] Confirm Debug Mode defaults to off and produces logs only after being enabled.
 - [ ] Change settings, click **Reset settings**, and confirm all defaults are restored.
@@ -28,7 +29,11 @@ Default mode should stay lightweight and avoid aggressive line wrappers.
 - [ ] In DevTools, run `document.querySelectorAll('[data-bidifix-line="true"]').length`.
 - [ ] Confirm the default-mode count is `0` or very low.
 - [ ] Confirm normal mixed Persian/Arabic paragraphs still render correctly.
-- [ ] Confirm ChatGPT and Claude composers still update direction while typing.
+- [ ] Run `document.querySelectorAll('[data-bidifix-composer]').length`.
+- [ ] Confirm the default-mode composer marker count is `0`.
+- [ ] Type, paste, use Shift+Enter, and send a message in the composer.
+- [ ] Confirm editor behavior remains smooth in default mode.
+- [ ] Enable **Composer direction fix** manually and confirm composer direction updates while typing Persian/Arabic text.
 
 ## Experimental mixed prompt fix
 
@@ -54,8 +59,9 @@ https://claude.ai مراجعه کنم. یک نمونه inline code و یک code 
 
 ## ChatGPT
 
-- [ ] The input composer becomes RTL and right-aligned while Persian text is present.
-- [ ] English phrases remain readable in the composer.
+- [ ] With **Composer direction fix** disabled, the extension does not add `data-bidifix-composer` to the composer.
+- [ ] With **Composer direction fix** enabled, the input composer becomes RTL and right-aligned while Persian text is present.
+- [ ] English phrases remain readable in the composer when the optional composer fix is enabled.
 - [ ] The assistant response is RTL and right-aligned where appropriate.
 - [ ] `BidiFix AI`, `Manifest V3`, and `MutationObserver` remain visually LTR.
 - [ ] `src/content/detector.ts` remains visually LTR.
@@ -66,8 +72,9 @@ https://claude.ai مراجعه کنم. یک نمونه inline code و یک code 
 
 ## Claude
 
-- [ ] The input composer becomes RTL and right-aligned while Persian text is present.
-- [ ] English phrases remain readable in the composer.
+- [ ] With **Composer direction fix** disabled, the extension does not add `data-bidifix-composer` to the composer.
+- [ ] With **Composer direction fix** enabled, the input composer becomes RTL and right-aligned while Persian text is present.
+- [ ] English phrases remain readable in the composer when the optional composer fix is enabled.
 - [ ] The assistant response is RTL and right-aligned where appropriate.
 - [ ] `BidiFix AI`, `Manifest V3`, and `MutationObserver` remain visually LTR.
 - [ ] `src/content/detector.ts` remains visually LTR.

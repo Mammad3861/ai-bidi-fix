@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS: Settings = {
   chatgptEnabled: true,
   claudeEnabled: true,
   strongRtl: false,
+  composerDirectionFix: false,
   experimentalMixedPromptFix: false,
   debug: false,
 };
@@ -71,12 +72,14 @@ function processRoot(root: ParentNode): void {
     lastDebugAt = Date.now();
   }
 
-  const composers = findComposers(root, site);
-  if (root instanceof Element) {
-    const containingComposer = findContainingComposer(root, site);
-    if (containingComposer) composers.push(containingComposer);
+  if (settings.composerDirectionFix) {
+    const composers = findComposers(root, site);
+    if (root instanceof Element) {
+      const containingComposer = findContainingComposer(root, site);
+      if (containingComposer) composers.push(containingComposer);
+    }
+    new Set(composers).forEach(applyComposerFix);
   }
-  new Set(composers).forEach(applyComposerFix);
 }
 
 if (site) {
@@ -87,7 +90,7 @@ if (site) {
   document.addEventListener(
     'input',
     (event) => {
-      if (!siteIsEnabled() || !(event.target instanceof Element)) return;
+      if (!siteIsEnabled() || !settings.composerDirectionFix || !(event.target instanceof Element)) return;
       const composer = findContainingComposer(event.target, site);
       if (composer) applyComposerFix(composer);
     },

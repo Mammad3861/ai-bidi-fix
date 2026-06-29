@@ -3,6 +3,7 @@ export interface Settings {
   chatgptEnabled: boolean;
   claudeEnabled: boolean;
   strongRtl: boolean;
+  composerDirectionFix: boolean;
   experimentalMixedPromptFix: boolean;
   debug: boolean;
 }
@@ -12,6 +13,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatgptEnabled: true,
   claudeEnabled: true,
   strongRtl: false,
+  composerDirectionFix: false,
   experimentalMixedPromptFix: false,
   debug: false,
 };

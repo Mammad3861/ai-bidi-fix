@@ -9,6 +9,7 @@ All notable changes to BidiFix AI are documented in this file.
 ### Fixed
 
 - Restored performance-safe default behavior by moving aggressive line-level wrapping behind an off-by-default experimental setting.
+- Moved composer/editor direction handling behind an off-by-default Composer direction fix setting.
 - Reduced default DOM wrapping to improve ChatGPT responsiveness and copy/paste usability.
 - Added processing caps and observer batching for the experimental mixed prompt fix.
 - Fixed Persian/Arabic RTL prose inside code blocks, `pre` blocks, and monospaced containers.
