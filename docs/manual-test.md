@@ -12,8 +12,34 @@ Complete this checklist against the production build before publishing a release
 - [ ] Reload the extension and hard-refresh open ChatGPT and Claude tabs.
 - [ ] Confirm the popup enables and disables the extension and each supported site.
 - [ ] Confirm the popup identifies ChatGPT, Claude, and an unsupported tab correctly.
+- [ ] Confirm **Experimental mixed prompt fix** defaults to off.
 - [ ] Confirm Debug Mode defaults to off and produces logs only after being enabled.
 - [ ] Change settings, click **Reset settings**, and confirm all defaults are restored.
+
+## Performance-safe default mode
+
+Default mode should stay lightweight and avoid aggressive line wrappers.
+
+- [ ] Open a long ChatGPT conversation.
+- [ ] Confirm **Experimental mixed prompt fix** is off.
+- [ ] Scroll the conversation and confirm the page feels smooth.
+- [ ] Copy text from the conversation and paste it into the composer.
+- [ ] Send a normal message and confirm ChatGPT remains responsive.
+- [ ] In DevTools, run `document.querySelectorAll('[data-bidifix-line="true"]').length`.
+- [ ] Confirm the default-mode count is `0` or very low.
+- [ ] Confirm normal mixed Persian/Arabic paragraphs still render correctly.
+- [ ] Confirm ChatGPT and Claude composers still update direction while typing.
+
+## Experimental mixed prompt fix
+
+Only enable this mode when testing difficult mixed English-first prompt blocks.
+
+- [ ] Enable **Experimental mixed prompt fix** in the popup.
+- [ ] Reload ChatGPT.
+- [ ] Run the English-before-Persian and displayed user prompt card tests below.
+- [ ] In DevTools, run `document.querySelectorAll('[data-bidifix-line="true"]').length`.
+- [ ] Confirm the count may increase but remains capped and does not freeze the page.
+- [ ] Disable the experimental setting again and confirm generated line wrappers are cleared after refresh/reprocessing.
 
 ## Test prompt
 
@@ -36,7 +62,6 @@ https://claude.ai مراجعه کنم. یک نمونه inline code و یک code 
 - [ ] `npm run build` remains visually LTR.
 - [ ] `https://claude.ai` remains visually LTR.
 - [ ] Real inline code and real code blocks remain LTR and left-aligned.
-- [ ] Persian/Arabic prose inside code-like blocks becomes RTL and readable.
 - [ ] Direction fixes appear while the response is streaming.
 
 ## Claude
@@ -49,7 +74,6 @@ https://claude.ai مراجعه کنم. یک نمونه inline code و یک code 
 - [ ] `npm run build` remains visually LTR.
 - [ ] `https://claude.ai` remains visually LTR.
 - [ ] Real inline code and real code blocks remain LTR and left-aligned.
-- [ ] Persian/Arabic prose inside code-like blocks becomes RTL and readable.
 - [ ] Direction fixes appear while the response is streaming.
 
 ## Code block and monospaced RTL prose regression
@@ -90,16 +114,14 @@ npm run build
 
 - [ ] The real TypeScript code block remains LTR and left-aligned.
 - [ ] TypeScript syntax, indentation, quotes, and template literals remain visually LTR.
-- [ ] The Persian prose code block becomes RTL and right-aligned.
-- [ ] File paths such as `docs/ICON_PIPELINE.md`, `project.godot`, `presets.cfg`, `public/icons/icon-128.png`, `src/content/bidi.ts`, and `src/content/detector.ts` remain visually LTR inside the RTL prose code block.
-- [ ] Commands such as `npm run typecheck` and `npm run build` remain visually LTR inside the RTL prose code block.
-- [ ] The normal Persian paragraph remains RTL and right-aligned.
-- [ ] Inline technical runs such as `src/content/bidi.ts` and `npm run build` remain visually LTR.
-- [ ] Copy/paste from all three cases preserves the original text and does not add Unicode bidi control characters.
+- [ ] The Persian prose code block is readable.
+- [ ] File paths such as `docs/ICON_PIPELINE.md`, `project.godot`, `presets.cfg`, `public/icons/icon-128.png`, `src/content/bidi.ts`, and `src/content/detector.ts` remain visually LTR.
+- [ ] Commands such as `npm run typecheck` and `npm run build` remain visually LTR.
+- [ ] Copy/paste preserves the original text and does not add Unicode bidi control characters.
 
 ## English-before-Persian mixed block regression
 
-Ask ChatGPT and Claude to output this as one markdown/code-like block, preserving the English lines before the Persian lines:
+This test is primarily for **Experimental mixed prompt fix**.
 
 ```text
 Problem:
@@ -113,13 +135,12 @@ project.godot
 presets.cfg
 ```
 
-- [ ] The English `Problem:` section remains readable LTR.
-- [ ] The Persian sentence lines become readable RTL.
+- [ ] In default mode, ChatGPT remains smooth and usable even if this rare block is imperfect.
+- [ ] With **Experimental mixed prompt fix** enabled, the English `Problem:` section remains readable LTR.
+- [ ] With the experimental setting enabled, the Persian sentence lines become readable RTL.
 - [ ] `commit` appears in the correct visual position inside the Persian sentence.
 - [ ] File paths such as `docs/ICON_PIPELINE.md`, `project.godot`, and `presets.cfg` remain readable LTR.
-- [ ] The whole block does not get forced into one broad LTR direction.
-- [ ] Pasting the same text into the ChatGPT and Claude composers keeps Persian lines readable while English lines remain readable.
-- [ ] Copy/paste preserves the original text and does not add Unicode bidi control characters.
+- [ ] Copy/paste remains acceptable and does not add Unicode bidi control characters.
 
 ## ChatGPT displayed user prompt card regression
 
@@ -137,11 +158,9 @@ Then later in the same block it contains Persian lines like:
 ```
 
 - [ ] The displayed user prompt card is processed, not only the assistant response.
-- [ ] The English section remains readable LTR.
-- [ ] The Persian lines are readable RTL.
-- [ ] Persian text remains readable even if ChatGPT renders it as standalone child text sections instead of one newline-containing text node.
-- [ ] `commit` appears in the correct visual position inside the Persian sentence.
-- [ ] `docs/ICON_PIPELINE.md`, `project.godot`, and `presets.cfg` remain readable LTR.
+- [ ] In default mode, the card uses lightweight block-level fixes without generating many line wrappers.
+- [ ] With **Experimental mixed prompt fix** enabled, Persian text remains readable even if ChatGPT renders it as standalone child text sections instead of one newline-containing text node.
+- [ ] `commit`, `docs/ICON_PIPELINE.md`, `project.godot`, and `presets.cfg` remain readable LTR.
 - [ ] The **Edit** button and other ChatGPT controls still work and are not restyled as message text.
 - [ ] The active composer still behaves as expected after sending the prompt.
 

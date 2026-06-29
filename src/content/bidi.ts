@@ -30,6 +30,10 @@ const INLINE_LTR_SKIP_SELECTOR = [
 const CODE_LIKE_SELECTOR = 'pre, code, [class*="font-mono"]';
 const INLINE_CODE_SELECTOR = 'code:not(pre code)';
 const DIRECT_TEXT_CONTAINER_SELECTOR = 'div, span';
+const PROCESSED_VERSION = '0.1.2-performance-safe';
+const MAX_INLINE_ISOLATION_TEXT_LENGTH = 2000;
+const MAX_LINE_WRAP_TEXT_LENGTH = 4000;
+const MAX_LINE_WRAPPERS_PER_MESSAGE = 80;
 
 const CODE_KEYWORD = /\b(?:import|export|function|class|const|let|var|return|if|else|for|while|switch|case|try|catch|interface|type|enum|async|await|def|from|public|private|protected|static|new|extends|implements)\b/;
 const SHELL_COMMAND = /(?:^|\n)\s*(?:npm|pnpm|yarn|node|npx|git|cd|mkdir|rm|cp|mv|python|pip|curl|docker|deno|bun)\s+[\w./:@-]/;
@@ -40,6 +44,11 @@ const YAML_OR_TOML_SYNTAX = /(?:^|\n)\s*[A-Za-z0-9_.-]+\s*[:=]\s*[^:\n]+/;
 const PERSIAN_ARABIC_SENTENCE_WORDS = /(?:[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]{2,}[\s،؛,.!?]+){3,}/u;
 
 export type TextDirection = 'rtl' | 'ltr' | 'auto';
+
+export interface BidiFixOptions {
+  strongRtl: boolean;
+  experimentalMixedPromptFix: boolean;
+}
 
 function setManagedDirection(element: HTMLElement, direction: TextDirection): void {
   if (element.dataset.aiBidiOriginalDir === undefined) {
@@ -100,6 +109,11 @@ function lineStats(text: string): { lines: string[]; nonEmptyLines: string[]; in
 
 function textDensityWithoutSpaces(text: string): number {
   return Math.max(text.replace(/\s/g, '').length, 1);
+}
+
+function textSignature(text: string): string {
+  const normalized = text.trim();
+  return `${normalized.length}:${normalized.slice(0, 40)}:${normalized.slice(-40)}`;
 }
 
 function directTextSectionCount(element: HTMLElement): number {
@@ -307,6 +321,22 @@ function processMixedTextLines(element: HTMLElement, strongRtl: boolean): void {
   });
 }
 
+function processMixedTextLinesWithBudget(
+  element: HTMLElement,
+  strongRtl: boolean,
+  budget: { remaining: number },
+): void {
+  if (budget.remaining <= 0) return;
+  if ((element.textContent?.length ?? 0) > MAX_LINE_WRAP_TEXT_LENGTH) return;
+
+  const existingCount = element.querySelectorAll('[data-bidifix-line="true"]').length;
+  processMixedTextLines(element, strongRtl);
+
+  const currentCount = element.querySelectorAll('[data-bidifix-line="true"]').length;
+  budget.remaining -= Math.max(0, currentCount - existingCount);
+  if (budget.remaining < 0) budget.remaining = 0;
+}
+
 function hasDirectTextNode(element: HTMLElement): boolean {
   return [...element.childNodes].some(
     (node) => node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()),
@@ -334,13 +364,14 @@ function collectDirectTextBlocks(message: HTMLElement, blocks: Set<HTMLElement>)
 
 export function applyBidiFix(
   message: HTMLElement,
-  strongRtl: boolean,
+  options: BidiFixOptions,
   site: SupportedSite,
 ): void {
   message.dataset.bidifixMessage = 'true';
   message.dataset.bidifixProcessed = 'true';
   if (site === 'claude') message.dataset.bidifixSite = 'claude';
   markTechnicalContent(message);
+  const lineWrapBudget = { remaining: MAX_LINE_WRAPPERS_PER_MESSAGE };
 
   const blocks = new Set<HTMLElement>();
   if (message.matches(TEXT_BLOCK_SELECTOR)) blocks.add(message);
@@ -371,16 +402,32 @@ export function applyBidiFix(
     if (!codeLikeRtlProse && block.closest(TECHNICAL_SELECTOR)) return;
 
     const text = codeLikeRtlProse ? (block.textContent?.trim() ?? '') : directReadableText(block);
-    const lineLevel = shouldUseLineDirection(block, text, codeLikeRtlProse);
-    const direction = lineLevel ? 'auto' : codeLikeRtlProse ? 'rtl' : detectDirection(text, strongRtl);
+    const signature = textSignature(text);
+    if (
+      block.dataset.bidifixProcessedVersion === PROCESSED_VERSION &&
+      block.dataset.bidifixTextSignature === signature
+    ) {
+      return;
+    }
+
+    const lineLevel =
+      options.experimentalMixedPromptFix &&
+      lineWrapBudget.remaining > 0 &&
+      text.length <= MAX_LINE_WRAP_TEXT_LENGTH &&
+      shouldUseLineDirection(block, text, codeLikeRtlProse);
+    const direction = lineLevel ? 'auto' : codeLikeRtlProse ? 'rtl' : detectDirection(text, options.strongRtl);
 
     if (codeLikeRtlProse) block.dataset.bidifixCodeProse = 'true';
     block.dataset.bidifixDirection = direction;
     block.dataset.bidifixProcessed = 'true';
+    block.dataset.bidifixProcessedVersion = PROCESSED_VERSION;
+    block.dataset.bidifixTextSignature = signature;
     setManagedDirection(block, direction);
 
-    if (lineLevel) processMixedTextLines(block, strongRtl);
-    else if (direction === 'rtl') isolateInlineLtrRuns(block);
+    if (lineLevel) processMixedTextLinesWithBudget(block, options.strongRtl, lineWrapBudget);
+    else if (direction === 'rtl' && text.length <= MAX_INLINE_ISOLATION_TEXT_LENGTH) {
+      isolateInlineLtrRuns(block);
+    }
     else unwrapInlineLtr(block);
   });
 }
@@ -423,6 +470,8 @@ export function clearBidiFix(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>('[data-bidifix-direction]').forEach((element) => {
     delete element.dataset.bidifixDirection;
     delete element.dataset.bidifixCodeProse;
+    delete element.dataset.bidifixProcessedVersion;
+    delete element.dataset.bidifixTextSignature;
     delete element.dataset.bidifixProcessed;
     restoreDirection(element);
   });

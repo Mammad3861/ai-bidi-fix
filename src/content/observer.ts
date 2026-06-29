@@ -4,11 +4,27 @@ export interface BidiObserver {
 }
 
 export function createBidiObserver(processRoot: (root: ParentNode) => void): BidiObserver {
-  let frame: number | null = null;
+  let scheduled = false;
+  let timeout: number | null = null;
   const pending = new Set<Node>();
 
+  const runWhenIdle = (callback: () => void): void => {
+    const requestIdle = window.requestIdleCallback as
+      | ((handler: IdleRequestCallback, options?: IdleRequestOptions) => number)
+      | undefined;
+    if (requestIdle) {
+      requestIdle(callback, { timeout: 500 });
+      return;
+    }
+    requestAnimationFrame(callback);
+  };
+
   const flush = (): void => {
-    frame = null;
+    scheduled = false;
+    if (timeout !== null) {
+      window.clearTimeout(timeout);
+      timeout = null;
+    }
     const roots = [...pending];
     pending.clear();
     roots.forEach((node) => {
@@ -16,9 +32,24 @@ export function createBidiObserver(processRoot: (root: ParentNode) => void): Bid
     });
   };
 
+  const isExtensionOwnedNode = (node: Node): boolean => {
+    const element = node instanceof Element ? node : node.parentElement;
+    return Boolean(
+      element?.closest(
+        [
+          '[data-bidifix-line="true"]',
+          '[data-bidifix-inline-ltr="true"]',
+        ].join(','),
+      ),
+    );
+  };
+
   const queue = (node: Node): void => {
+    if (isExtensionOwnedNode(node)) return;
     pending.add(node.nodeType === Node.TEXT_NODE ? node.parentElement ?? document : node);
-    if (frame === null) frame = requestAnimationFrame(flush);
+    if (scheduled) return;
+    scheduled = true;
+    timeout = window.setTimeout(() => runWhenIdle(flush), 120);
   };
 
   const observer = new MutationObserver((mutations) => {
@@ -37,7 +68,8 @@ export function createBidiObserver(processRoot: (root: ParentNode) => void): Bid
   return {
     disconnect() {
       observer.disconnect();
-      if (frame !== null) cancelAnimationFrame(frame);
+      if (timeout !== null) window.clearTimeout(timeout);
+      scheduled = false;
       pending.clear();
     },
     refresh() {

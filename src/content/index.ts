@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS: Settings = {
   chatgptEnabled: true,
   claudeEnabled: true,
   strongRtl: false,
+  experimentalMixedPromptFix: false,
   debug: false,
 };
 
@@ -32,6 +33,7 @@ function isSettingsKey(key: string): key is keyof Settings {
 const site = getCurrentSite();
 let settings: Settings = DEFAULT_SETTINGS;
 let lastDebugAt = 0;
+const MAX_MESSAGES_PER_REFRESH = 30;
 
 function debugLog(message: string, details?: unknown): void {
   if (!settings.debug) return;
@@ -53,10 +55,19 @@ function processRoot(root: ParentNode): void {
     if (containingMessage) messages.push(containingMessage);
   }
 
-  const uniqueMessages = new Set(messages);
-  uniqueMessages.forEach((message) => applyBidiFix(message, settings.strongRtl, site));
-  if (uniqueMessages.size > 0 && Date.now() - lastDebugAt > 2000) {
-    debugLog(`processed ${site} messages`, uniqueMessages.size);
+  const uniqueMessages = [...new Set(messages)].slice(0, MAX_MESSAGES_PER_REFRESH);
+  uniqueMessages.forEach((message) =>
+    applyBidiFix(
+      message,
+      {
+        strongRtl: settings.strongRtl,
+        experimentalMixedPromptFix: settings.experimentalMixedPromptFix,
+      },
+      site,
+    ),
+  );
+  if (uniqueMessages.length > 0 && Date.now() - lastDebugAt > 2000) {
+    debugLog(`processed ${site} messages`, uniqueMessages.length);
     lastDebugAt = Date.now();
   }
 

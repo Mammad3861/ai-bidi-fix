@@ -23,6 +23,7 @@ The extension handles assistant responses, streamed content, and prompt composer
 - Uses `MutationObserver` to process newly streamed messages.
 - Provides global, per-site, and Strong RTL settings in a simple popup.
 - Shows whether the current tab is ChatGPT, Claude, or unsupported.
+- Keeps default processing performance-safe; the experimental mixed prompt fix is optional.
 - Includes an optional Debug Mode for local troubleshooting; it is disabled by default.
 - Stores preferences in `chrome.storage.sync`.
 
@@ -100,7 +101,8 @@ After rebuilding, return to `chrome://extensions`, click **Reload** on BidiFix A
 
 - The popup identifies the active tab as ChatGPT, Claude, or unsupported.
 - Debug Mode is off by default. Enable it only when collecting troubleshooting output from DevTools, then turn it off again.
-- **Reset settings** restores the global, per-site, Strong RTL, and Debug Mode defaults.
+- **Experimental mixed prompt fix** is off by default. It can improve rare English-first prompt blocks, but may affect performance on long chats.
+- **Reset settings** restores the global, per-site, Strong RTL, experimental, and Debug Mode defaults.
 - Before reporting a rendering issue, reproduce it with the smallest non-sensitive text sample possible.
 
 ## Manual testing
@@ -138,6 +140,7 @@ Verify that the Persian text remains RTL while the command, path, URL, inline co
 - ChatGPT and Claude can change their page structure without notice. Detection selectors may occasionally require updates.
 - Support is limited to the listed sites and Chromium-based browsers; Firefox and Safari are not currently targeted.
 - Direction is inferred heuristically from visible Persian, Arabic, and Latin characters. Unusual multilingual or heavily formatted content may still need manual adjustment.
+- Rare mixed prompt cards that start in English and later contain Persian/Arabic text use lightweight fixes by default. Enable **Experimental mixed prompt fix** only when needed, and turn it off if ChatGPT becomes slow.
 - Inline isolation focuses on common English and technical patterns. Complex mathematical notation, generated interactive artifacts, canvas content, and text inside closed shadow DOM may not be processed.
 - Changes to extension code require a rebuild, extension reload, and page refresh.
 
