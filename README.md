@@ -40,6 +40,8 @@ BidiFix AI operates entirely inside the browser:
 
 Only extension preferences are stored through Chrome sync storage. Site access is limited to the supported ChatGPT and Claude origins.
 
+See the full [BidiFix AI Privacy Policy](PRIVACY.md) for details about local text processing, settings storage, and user controls.
+
 ## Local development
 
 Requirements:
