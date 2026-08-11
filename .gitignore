@@ -1,0 +1,23 @@
+node_modules/
+dist/
+bidifix-ai-v*.zip
+bidifix-ai-v*.zip.sha256
+
+# Editor settings and temporary files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs and local environment overrides
+*.log
+.env
+.env.*
+!.env.example
+

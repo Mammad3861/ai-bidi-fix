@@ -1,0 +1,163 @@
+name: Build GitHub release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing semantic version tag to build (for example, v0.1.2)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish release assets
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+    steps:
+      - name: Validate tag format
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected a semantic version tag such as v0.1.2; received: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Check out the exact release tag
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Verify the remote tag and checkout
+        shell: bash
+        run: |
+          git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null
+          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
+
+          tag_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+          head_commit="$(git rev-parse HEAD)"
+
+          if [[ "$head_commit" != "$tag_commit" ]]; then
+            echo "HEAD ($head_commit) is not the commit referenced by $RELEASE_TAG ($tag_commit)." >&2
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate package and manifest versions
+        id: release_metadata
+        shell: bash
+        run: |
+          version="${RELEASE_TAG#v}"
+          package_version="$(node -p "require('./package.json').version")"
+          manifest_version="$(node -p "require('./manifest.json').version")"
+
+          if [[ "$package_version" != "$version" ]]; then
+            echo "package.json version ($package_version) does not match tag version ($version)." >&2
+            exit 1
+          fi
+
+          if [[ "$manifest_version" != "$version" ]]; then
+            echo "manifest.json version ($manifest_version) does not match tag version ($version)." >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "zip_name=bidifix-ai-$RELEASE_TAG.zip" >> "$GITHUB_OUTPUT"
+          echo "checksum_name=bidifix-ai-$RELEASE_TAG.zip.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Package the dist contents
+        env:
+          ZIP_NAME: ${{ steps.release_metadata.outputs.zip_name }}
+          CHECKSUM_NAME: ${{ steps.release_metadata.outputs.checksum_name }}
+        shell: bash
+        run: |
+          test -f dist/manifest.json
+          rm -f "$ZIP_NAME" "$CHECKSUM_NAME"
+          (
+            cd dist
+            zip -q -r "../$ZIP_NAME" .
+          )
+
+      - name: Verify the release ZIP
+        env:
+          ZIP_NAME: ${{ steps.release_metadata.outputs.zip_name }}
+        shell: bash
+        run: |
+          entries="$(unzip -Z1 "$ZIP_NAME")"
+
+          if ! grep -Fxq "manifest.json" <<< "$entries"; then
+            echo "manifest.json is not present at the ZIP root." >&2
+            unzip -Z1 "$ZIP_NAME"
+            exit 1
+          fi
+
+          if grep -Eq '^(\./)?dist/' <<< "$entries"; then
+            echo "The ZIP incorrectly contains a top-level dist directory." >&2
+            unzip -Z1 "$ZIP_NAME"
+            exit 1
+          fi
+
+      - name: Generate SHA-256 checksum
+        env:
+          ZIP_NAME: ${{ steps.release_metadata.outputs.zip_name }}
+          CHECKSUM_NAME: ${{ steps.release_metadata.outputs.checksum_name }}
+        shell: bash
+        run: sha256sum "$ZIP_NAME" > "$CHECKSUM_NAME"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ env.RELEASE_TAG }}
+          path: |
+            ${{ steps.release_metadata.outputs.zip_name }}
+            ${{ steps.release_metadata.outputs.checksum_name }}
+          if-no-files-found: error
+
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ZIP_NAME: ${{ steps.release_metadata.outputs.zip_name }}
+          CHECKSUM_NAME: ${{ steps.release_metadata.outputs.checksum_name }}
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$ZIP_NAME" "$CHECKSUM_NAME" \
+              --clobber \
+              --repo "$GITHUB_REPOSITORY"
+          else
+            git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null
+            gh release create "$RELEASE_TAG" "$ZIP_NAME" "$CHECKSUM_NAME" \
+              --verify-tag \
+              --generate-notes \
+              --title "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY"
+          fi

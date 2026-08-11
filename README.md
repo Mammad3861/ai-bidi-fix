@@ -76,8 +76,10 @@ The unpacked extension is generated in `dist/`.
 
 ## Install from a GitHub release
 
+Release ZIPs and SHA-256 checksum files are built automatically by GitHub Actions from the exact version tag. In the release's **Assets** section, download the attached file named `bidifix-ai-vX.Y.Z.zip`. Do not use GitHub's automatically generated **Source code** archives; those contain project sources rather than the built extension.
+
 1. Open the project's **Releases** page on GitHub.
-2. Download the extension ZIP attached to the desired release or pre-release.
+2. Under **Assets**, download the extension ZIP attached to the desired release or pre-release.
 3. Extract the ZIP to a permanent local directory. Chrome cannot load the extension directly from the ZIP file.
 4. Open `chrome://extensions`.
 5. Enable **Developer mode**.
