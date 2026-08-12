@@ -1,4 +1,5 @@
 import { TEXT_BLOCK_SELECTOR } from './detector';
+import { isLikelyRealCodeText } from './code-classifier';
 import type { SupportedSite } from '../shared/sites';
 
 const RTL_CHARACTER = /[\u0590-\u05ff\u0600-\u06ff\u0700-\u074f\u0750-\u077f\u0780-\u07bf\u08a0-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/gu;
@@ -30,19 +31,11 @@ const INLINE_LTR_SKIP_SELECTOR = [
 const CODE_LIKE_SELECTOR = 'pre, code, [class*="font-mono"]';
 const INLINE_CODE_SELECTOR = 'code:not(pre code)';
 const DIRECT_TEXT_CONTAINER_SELECTOR = 'div, span';
-const PROCESSED_VERSION = '0.1.2-performance-safe';
+const PROCESSED_VERSION = '0.1.3-code-prose-rendering-v2';
 const MAX_INLINE_ISOLATION_TEXT_LENGTH = 2000;
 const MAX_LINE_WRAP_TEXT_LENGTH = 4000;
 const MAX_LINE_WRAPPERS_PER_MESSAGE = 80;
 const MAX_BLOCKS_PER_MESSAGE = 80;
-
-const CODE_KEYWORD = /\b(?:import|export|function|class|const|let|var|return|if|else|for|while|switch|case|try|catch|interface|type|enum|async|await|def|from|public|private|protected|static|new|extends|implements)\b/;
-const SHELL_COMMAND = /(?:^|\n)\s*(?:npm|pnpm|yarn|node|npx|git|cd|mkdir|rm|cp|mv|python|pip|curl|docker|deno|bun)\s+[\w./:@-]/;
-const HTML_OR_XML_TAG = /<\/?[A-Za-z][^>\n]{0,120}>/;
-const CSS_DECLARATION = /\b[a-z-]+\s*:\s*[^;\n{}]+;/i;
-const JSON_OR_OBJECT_SYNTAX = /["'][\w-]+["']\s*:|^\s*(?:\{|\[)[\s\S]*(?:\}|\])\s*$/;
-const YAML_OR_TOML_SYNTAX = /(?:^|\n)\s*[A-Za-z0-9_.-]+\s*[:=]\s*[^:\n]+/;
-const PERSIAN_ARABIC_SENTENCE_WORDS = /(?:[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]{2,}[\s،؛,.!?]+){3,}/u;
 
 export type TextDirection = 'rtl' | 'ltr' | 'auto';
 
@@ -97,19 +90,11 @@ function hasLtrText(text: string): boolean {
   return result;
 }
 
-function countMatches(text: string, pattern: RegExp): number {
-  return text.match(pattern)?.length ?? 0;
-}
-
 function lineStats(text: string): { lines: string[]; nonEmptyLines: string[]; indentedLines: number } {
   const lines = text.split(/\r?\n/);
   const nonEmptyLines = lines.filter((line) => line.trim().length > 0);
   const indentedLines = nonEmptyLines.filter((line) => /^\s{2,}|\t/.test(line)).length;
   return { lines, nonEmptyLines, indentedLines };
-}
-
-function textDensityWithoutSpaces(text: string): number {
-  return Math.max(text.replace(/\s/g, '').length, 1);
 }
 
 function textSignature(text: string): string {
@@ -127,38 +112,7 @@ function directTextSectionCount(element: HTMLElement): number {
 }
 
 export function isLikelyRealCodeBlock(element: HTMLElement, text: string): boolean {
-  const normalized = text.trim();
-  if (!normalized) return false;
-
-  const { nonEmptyLines, indentedLines } = lineStats(normalized);
-  const charCount = textDensityWithoutSpaces(normalized);
-  const rtlWordCount = countMatches(normalized, /[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]{2,}/gu);
-  const codePunctuationCount = countMatches(normalized, /[{}[\]();=<>|&]/g);
-  const punctuationDensity = codePunctuationCount / charCount;
-  const hasRtl = hasRtlText(normalized);
-  let codeScore = 0;
-  let proseScore = 0;
-
-  if (CODE_KEYWORD.test(normalized)) codeScore += 3;
-  if (SHELL_COMMAND.test(normalized)) codeScore += 2;
-  if (HTML_OR_XML_TAG.test(normalized)) codeScore += 3;
-  if (CSS_DECLARATION.test(normalized)) codeScore += 2;
-  if (JSON_OR_OBJECT_SYNTAX.test(normalized)) codeScore += 2;
-  if (YAML_OR_TOML_SYNTAX.test(normalized) && !hasRtl) codeScore += 1;
-  if (punctuationDensity > 0.08) codeScore += 2;
-  if (punctuationDensity > 0.14) codeScore += 2;
-  if (nonEmptyLines.length >= 3 && indentedLines >= 2) codeScore += 2;
-  if (element.matches(INLINE_CODE_SELECTOR) && !hasRtl) codeScore += 3;
-
-  if (hasRtl) proseScore += 2;
-  if (PERSIAN_ARABIC_SENTENCE_WORDS.test(normalized)) proseScore += 4;
-  if (rtlWordCount >= 4) proseScore += 3;
-  if (rtlWordCount >= 8) proseScore += 2;
-  if (/[،؛؟]/u.test(normalized)) proseScore += 2;
-  if (punctuationDensity < 0.08) proseScore += 1;
-  if (SHELL_COMMAND.test(normalized) && hasRtl && rtlWordCount >= 3) proseScore += 1;
-
-  return codeScore >= proseScore + 2;
+  return isLikelyRealCodeText(text, { inlineCode: element.matches(INLINE_CODE_SELECTOR) });
 }
 
 function isCodeLikeRtlProse(element: HTMLElement): boolean {
@@ -196,19 +150,35 @@ function markTechnicalContent(root: ParentNode): void {
     setManagedDirection(element, 'ltr');
   });
 
+  const codeLikeElements = new Set<HTMLElement>();
+  if (root instanceof HTMLElement && root.matches(CODE_LIKE_SELECTOR)) codeLikeElements.add(root);
   root.querySelectorAll<HTMLElement>(CODE_LIKE_SELECTOR).forEach((element) => {
+    codeLikeElements.add(element);
+  });
+
+  codeLikeElements.forEach((element) => {
     if (isCodeLikeRtlProse(element)) {
+      const wasTechnical = element.dataset.bidifixTechnical === 'true';
       delete element.dataset.bidifixTechnical;
+      if (wasTechnical) {
+        delete element.dataset.bidifixProcessed;
+        restoreDirection(element);
+      }
       return;
     }
 
+    if (element.dataset.bidifixCodeProse === 'true') unwrapInlineLtr(element);
+    delete element.dataset.bidifixDirection;
+    delete element.dataset.bidifixCodeProse;
+    delete element.dataset.bidifixProcessedVersion;
+    delete element.dataset.bidifixTextSignature;
     element.dataset.bidifixTechnical = 'true';
     element.dataset.bidifixProcessed = 'true';
     setManagedDirection(element, 'ltr');
   });
 }
 
-function isolateInlineLtrRuns(block: HTMLElement): void {
+function findInlineLtrTextNodes(block: HTMLElement): Text[] {
   const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = node.parentElement;
@@ -221,8 +191,11 @@ function isolateInlineLtrRuns(block: HTMLElement): void {
   });
   const textNodes: Text[] = [];
   while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+  return textNodes;
+}
 
-  textNodes.forEach((textNode) => {
+function isolateInlineLtrRuns(block: HTMLElement): void {
+  findInlineLtrTextNodes(block).forEach((textNode) => {
     const text = textNode.data;
     const fragment = document.createDocumentFragment();
     let cursor = 0;
@@ -245,6 +218,10 @@ function isolateInlineLtrRuns(block: HTMLElement): void {
     if (cursor < text.length) fragment.append(text.slice(cursor));
     textNode.replaceWith(fragment);
   });
+}
+
+function hasUnisolatedInlineLtrRun(block: HTMLElement): boolean {
+  return findInlineLtrTextNodes(block).length > 0;
 }
 
 function unwrapInlineLtr(root: ParentNode): void {
@@ -380,10 +357,12 @@ export function applyBidiFix(
   const lineWrapBudget = { remaining: MAX_LINE_WRAPPERS_PER_MESSAGE };
 
   const blocks = new Set<HTMLElement>();
+  // Code-like RTL prose is the release-critical case and must not be starved by
+  // the per-message budget in long responses with many ordinary prose nodes.
+  collectCodeLikeRtlProseBlocks(message, blocks);
   if (message.matches(TEXT_BLOCK_SELECTOR)) blocks.add(message);
   message.querySelectorAll<HTMLElement>(TEXT_BLOCK_SELECTOR).forEach((block) => blocks.add(block));
   collectDirectTextBlocks(message, blocks);
-  collectCodeLikeRtlProseBlocks(message, blocks);
 
   if (site === 'claude') {
     // Claude sometimes emits prose as nested divs without p/li semantics.
@@ -409,13 +388,6 @@ export function applyBidiFix(
 
     const text = codeLikeRtlProse ? (block.textContent?.trim() ?? '') : directReadableText(block);
     const signature = textSignature(text);
-    if (
-      block.dataset.bidifixProcessedVersion === PROCESSED_VERSION &&
-      block.dataset.bidifixTextSignature === signature
-    ) {
-      return;
-    }
-
     const lineLevel =
       options.experimentalMixedPromptFix &&
       lineWrapBudget.remaining > 0 &&
@@ -423,16 +395,31 @@ export function applyBidiFix(
       shouldUseLineDirection(block, text, codeLikeRtlProse);
     const direction = lineLevel ? 'auto' : codeLikeRtlProse ? 'rtl' : detectDirection(text, options.strongRtl);
 
+    const allowInlineIsolation =
+      text.length <= MAX_INLINE_ISOLATION_TEXT_LENGTH &&
+      (site !== 'chatgpt' || !isChatGptDisplayedUserPrompt(message) || options.experimentalMixedPromptFix);
+    const processedAndUnchanged =
+      block.dataset.bidifixProcessedVersion === PROCESSED_VERSION &&
+      block.dataset.bidifixTextSignature === signature;
+    const lostInlineIsolation =
+      !lineLevel &&
+      direction === 'rtl' &&
+      allowInlineIsolation &&
+      hasUnisolatedInlineLtrRun(block);
+
+    // ChatGPT can reconcile a fenced block's children after BidiFix runs. Its
+    // text remains identical, but React/CodeMirror removes the <bdi> islands
+    // while leaving our attributes on the stable pre/code element. Re-run only
+    // when a genuinely wrappable LTR run is present; unchanged blocks otherwise
+    // remain a no-op.
+    if (processedAndUnchanged && !lostInlineIsolation) return;
+
     if (codeLikeRtlProse) block.dataset.bidifixCodeProse = 'true';
     block.dataset.bidifixDirection = direction;
     block.dataset.bidifixProcessed = 'true';
     block.dataset.bidifixProcessedVersion = PROCESSED_VERSION;
     block.dataset.bidifixTextSignature = signature;
     setManagedDirection(block, direction);
-
-    const allowInlineIsolation =
-      text.length <= MAX_INLINE_ISOLATION_TEXT_LENGTH &&
-      (site !== 'chatgpt' || !isChatGptDisplayedUserPrompt(message) || options.experimentalMixedPromptFix);
 
     if (lineLevel) processMixedTextLinesWithBudget(block, options.strongRtl, lineWrapBudget);
     else if (direction === 'rtl' && allowInlineIsolation) {

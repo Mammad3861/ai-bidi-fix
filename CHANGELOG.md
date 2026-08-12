@@ -4,6 +4,15 @@ All notable changes to BidiFix AI are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Resolved the remaining Issue #8 cases where short Persian/Arabic technical prose could be mistaken for LTR source code inside `pre`, `code`, nested code, or monospaced containers.
+- Distinguished strong whole-block source, shell, JSON, markup, style, and config structure from incidental paths, commands, identifiers, and code keywords in natural RTL prose.
+- Kept genuine code with Persian/Arabic strings or comments LTR while preserving the performance-safe default path and existing inline LTR isolation.
+- Prioritized RTL code-like prose within the existing per-message processing budget so fenced blocks in long ChatGPT responses are not starved by earlier paragraph nodes.
+- Restored missing inline LTR islands when ChatGPT reconciles a processed fenced block's children without changing its text.
+- Added a browser DOM regression fixture for current ChatGPT-style nested `pre`/`code` and read-only CodeMirror markup, computed styles, state transitions, cleanup, and idempotency.
+
 ## [0.1.2] - 2026-06-26
 
 ### Fixed

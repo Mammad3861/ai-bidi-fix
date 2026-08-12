@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BidiFix DOM regression fixture</title>
+    <style>
+      body {
+        margin: 2rem;
+        font-family: system-ui, sans-serif;
+      }
+
+      pre,
+      code {
+        direction: ltr;
+        text-align: left;
+        unicode-bidi: isolate;
+        white-space: pre;
+      }
+
+      #code-block-viewer {
+        direction: ltr;
+      }
+
+      .cm-content > span {
+        unicode-bidi: normal;
+      }
+
+      #fixtures {
+        position: absolute;
+        left: -10000px;
+        width: 640px;
+      }
+
+      .pass {
+        color: #18794e;
+      }
+
+      .fail {
+        color: #c9372c;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>BidiFix DOM regression fixture</h1>
+    <p id="summary">Running…</p>
+    <ol id="results"></ol>
+    <div id="fixtures"></div>
+    <script type="module" src="/tests/dom-fixture.ts"></script>
+  </body>
+</html>

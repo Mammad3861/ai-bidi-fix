@@ -4,10 +4,10 @@ Complete this checklist against the exact GitHub Actions release assets intended
 
 ## Test record
 
-- [ ] Version/tag: `v0.1.2`
+- [ ] Version/tag: `v0.1.3`
 - [ ] GitHub Actions run URL recorded: ____________________
-- [ ] Release ZIP filename: `bidifix-ai-v0.1.2.zip`
-- [ ] Checksum filename: `bidifix-ai-v0.1.2.zip.sha256`
+- [ ] Release ZIP filename: `bidifix-ai-v0.1.3.zip`
+- [ ] Checksum filename: `bidifix-ai-v0.1.3.zip.sha256`
 - [ ] SHA-256 verified and recorded: ____________________
 - [ ] Chrome version: ____________________
 - [ ] Operating system: ____________________
@@ -16,7 +16,7 @@ Complete this checklist against the exact GitHub Actions release assets intended
 On Windows, compare the published checksum with:
 
 ```powershell
-Get-FileHash .\bidifix-ai-v0.1.2.zip -Algorithm SHA256
+Get-FileHash .\bidifix-ai-v0.1.3.zip -Algorithm SHA256
 ```
 
 ## Package and installation
@@ -27,7 +27,7 @@ Get-FileHash .\bidifix-ai-v0.1.2.zip -Algorithm SHA256
 - [ ] Confirm there is no enclosing `dist/` directory.
 - [ ] Open `chrome://extensions` and enable Developer mode.
 - [ ] Select **Load unpacked** and choose the extracted root.
-- [ ] Confirm BidiFix AI loads as version `0.1.2` without manifest or runtime errors.
+- [ ] Confirm BidiFix AI loads as version `0.1.3` without manifest or runtime errors.
 - [ ] Confirm the 16, 48, and 128 pixel icons render in the toolbar and extension details.
 - [ ] Inspect the extension service/error view and supported-site DevTools consoles for unexpected errors.
 
@@ -98,23 +98,82 @@ function buildRelease(version: string) {
 - [ ] Short inline technical tokens remain LTR.
 - [ ] Shell-command-only blocks remain readable LTR.
 - [ ] Test Persian/Arabic prose placed inside `pre`, `code`, or monospaced scrollable containers.
-- [ ] Confirm paths and commands inside that RTL prose remain readable LTR where the heuristic recognizes the block as prose.
+- [ ] Confirm paths and commands inside that RTL prose remain readable LTR.
 
-Use this issue #8 regression sample:
+Run the complete Issue [#8](https://github.com/Mammad3861/ai-bidi-fix/issues/8) regression matrix inside `pre`, `code`, nested `pre > code`, and representative monospaced containers on ChatGPT and Claude.
+
+### A. Persian technical prose
 
 ```text
-الان چون آیکون خوب شده، اول commit آیکون را انجام بده.
-ولی قبلش docs/ICON_PIPELINE.md و project.godot و presets.cfg را بررسی کن.
-بعد npm run build را اجرا کن.
+فایل docs/ICON_PIPELINE.md را بررسی کن و سپس project.godot و presets.cfg را باز کن.
 ```
 
-- [ ] Record the result for GitHub issue [#8](https://github.com/Mammad3861/ai-bidi-fix/issues/8): Pass / Partial / Fail
+- [ ] The prose is RTL and the paths remain readable LTR.
+
+### B. Persian prose plus command
+
+```text
+برای ساخت پروژه ابتدا npm run build را اجرا کن و بعد فایل README.md را بررسی کن.
+```
+
+- [ ] The prose is RTL and the command/path remain readable LTR.
+
+### C. Genuine TypeScript
+
+```ts
+const value = 1;
+function test() {
+  return value;
+}
+```
+
+- [ ] The block remains LTR and unchanged.
+
+### D. Genuine shell
+
+```sh
+npm ci
+npm run lint
+npm run build
+```
+
+- [ ] The command-only block remains LTR and unchanged.
+
+### E. JSON/config
+
+```json
+{
+  "name": "bidifix-ai",
+  "version": "0.1.3"
+}
+```
+
+- [ ] The structured block remains LTR and unchanged.
+
+### F. English technical prose
+
+```text
+Open README.md and run npm run build.
+```
+
+- [ ] The English-only technical block remains LTR.
+
+### G. Persian prose with URL and paths
+
+```text
+برای اطلاعات بیشتر به https://claude.ai/ برو و فایل‌های docs/ICON_PIPELINE.md و src/content/bidi.ts را بررسی کن.
+```
+
+- [ ] The prose is RTL and the URL/paths remain readable LTR.
+- [ ] Copy every corrected RTL case into a plain-text editor and confirm the characters and ordering are unchanged.
+- [ ] Record the result for GitHub issue #8: Pass / Partial / Fail
 - [ ] If any edge case still fails, record the affected site/container and keep #8 documented as a known limitation. Do not hold the result out as fixed without a verified test.
 
 ## ChatGPT interaction and performance
 
 - [ ] Assistant responses are corrected while streaming.
-- [ ] Displayed user prompt cards remain selectable and readable.
+- [ ] A normal Persian displayed user prompt remains selectable, RTL, and readable.
+- [ ] A normal English displayed user prompt remains selectable, LTR, and readable.
 - [ ] The **Edit** action on a displayed prompt still works.
 - [ ] Enter sends a prompt normally.
 - [ ] Shift+Enter inserts a line break normally.
@@ -177,4 +236,3 @@ Test this separately after the default-mode matrix passes.
 - [ ] Store screenshots were captured from this exact tested release package using non-sensitive content.
 - [ ] Any issue #8 failure is documented as a known limitation rather than represented as fixed.
 - [ ] The exact tested ZIP—not a source archive and not a different local build—is selected for dashboard upload.
-

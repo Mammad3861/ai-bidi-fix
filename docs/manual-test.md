@@ -126,6 +126,60 @@ npm run build
 - [ ] Commands such as `npm run typecheck` and `npm run build` remain visually LTR.
 - [ ] Copy/paste preserves the original text and does not add Unicode bidi control characters.
 
+### v0.1.3 live ChatGPT fenced-block regression
+
+Test both of these as fenced blocks in a long ChatGPT assistant response:
+
+```text
+فایل docs/ICON_PIPELINE.md را بررسی کن و سپس project.godot و presets.cfg را باز کن.
+```
+
+```text
+برای ساخت پروژه ابتدا npm run build را اجرا کن و بعد فایل README.md را بررسی کن.
+```
+
+- [ ] The fenced prose block has `data-bidifix-code-prose="true"` and `data-bidifix-direction="rtl"`.
+- [ ] Its displayed `pre`, nested `code`, or read-only `.cm-content` node computes to `direction: rtl`, `text-align: right`, and `unicode-bidi: plaintext`.
+- [ ] `docs/ICON_PIPELINE.md`, `project.godot`, `presets.cfg`, `npm run build`, and `README.md` are wrapped as separate `data-bidifix-inline-ltr="true"` islands.
+- [ ] Copying the block into a plain-text editor produces exactly the original text.
+- [ ] A long response containing more than 80 ordinary prose nodes still processes fenced RTL prose near the end.
+- [ ] After a streamed/re-rendered block settles, its inline LTR islands are present and are not nested or duplicated.
+
+Keep these genuine blocks LTR in the same test:
+
+```ts
+const value = 1;
+function test() {
+  return value;
+}
+```
+
+```sh
+npm ci
+npm run lint
+npm run build
+```
+
+```json
+{
+  "name": "bidifix-ai",
+  "version": "0.1.3"
+}
+```
+
+Also confirm this remains genuine LTR TypeScript despite Persian content:
+
+```ts
+const message = "سلام دنیا";
+// توضیح فارسی
+console.log(message);
+```
+
+For the repository DOM fixture, run `npm run test:dom`, open
+`http://127.0.0.1:4174/tests/dom-fixture.html`, and confirm every assertion passes.
+This fixture exercises current ChatGPT-style nested spans and a read-only CodeMirror
+viewer with an LTR ancestor, without requiring a browser-test dependency.
+
 ## English-before-Persian mixed block regression
 
 This test is primarily for **Experimental mixed prompt fix**.

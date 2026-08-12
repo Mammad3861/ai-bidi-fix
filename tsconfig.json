@@ -15,5 +15,5 @@
     "types": ["chrome", "node"],
     "skipLibCheck": true
   },
-  "include": ["src", "vite.config.ts", "eslint.config.js"]
+  "include": ["src", "tests/**/*.ts", "vite.config.ts", "eslint.config.js"]
 }
