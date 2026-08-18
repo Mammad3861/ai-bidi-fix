@@ -8,6 +8,16 @@ Browsers support right-to-left (RTL) and left-to-right (LTR) text, but heavily m
 
 BidiFix AI detects chat text blocks, chooses an appropriate block direction, and isolates embedded LTR phrases. It changes presentation and DOM direction metadata without changing the underlying text characters, so normal selection and copy/paste continue to work.
 
+## Install
+
+For most users, the easiest and recommended way to install BidiFix AI is directly from the Chrome Web Store:
+
+**[Install BidiFix AI from the Chrome Web Store](https://chromewebstore.google.com/detail/bidifix-ai/kcdmbkdkmbidapfkaoheplmnjipgppob)**
+
+The Chrome Web Store version receives automatic browser-managed updates.
+
+Manual installation from GitHub Releases is mainly intended for testing and development.
+
 ## Supported sites
 
 - ChatGPT: `https://chatgpt.com/*` and `https://chat.openai.com/*`
@@ -76,7 +86,7 @@ npm run build
 
 The unpacked extension is generated in `dist/`.
 
-## Install from a GitHub release
+## Manual install from a GitHub release
 
 Release ZIPs and SHA-256 checksum files are built automatically by GitHub Actions from the exact version tag. In the release's **Assets** section, download the attached file named `bidifix-ai-vX.Y.Z.zip`. Do not use GitHub's automatically generated **Source code** archives; those contain project sources rather than the built extension.
 
