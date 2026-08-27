@@ -1,9 +1,13 @@
 import { TEXT_BLOCK_SELECTOR } from './detector';
 import { isLikelyRealCodeText } from './code-classifier';
+import {
+  detectDirection,
+  hasLtrText,
+  hasRtlText,
+  type TextDirection,
+} from '../core/text-direction';
 import type { SupportedSite } from '../shared/sites';
 
-const RTL_CHARACTER = /[\u0590-\u05ff\u0600-\u06ff\u0700-\u074f\u0750-\u077f\u0780-\u07bf\u08a0-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/gu;
-const LTR_CHARACTER = /[A-Za-z\u00c0-\u02af]/g;
 const INLINE_LTR_RUN = /(?:https?:\/\/|www\.)[^\s\u0590-\u08ff]+|[A-Za-z][A-Za-z0-9_@#.+:/\\-]*(?:[ \t]+[A-Za-z0-9][A-Za-z0-9_@#.+:/\\-]*)*/g;
 const TECHNICAL_SELECTOR = [
   'pre',
@@ -37,8 +41,6 @@ const MAX_LINE_WRAP_TEXT_LENGTH = 4000;
 const MAX_LINE_WRAPPERS_PER_MESSAGE = 80;
 const MAX_BLOCKS_PER_MESSAGE = 80;
 
-export type TextDirection = 'rtl' | 'ltr' | 'auto';
-
 export interface BidiFixOptions {
   strongRtl: boolean;
   experimentalMixedPromptFix: boolean;
@@ -65,29 +67,6 @@ function directReadableText(element: HTMLElement): string {
     if (node.dataset.bidifixDirection !== 'rtl') node.remove();
   });
   return clone.textContent?.trim() ?? '';
-}
-
-export function detectDirection(text: string, strongRtl: boolean): TextDirection {
-  const rtlCount = text.match(RTL_CHARACTER)?.length ?? 0;
-  const ltrCount = text.match(LTR_CHARACTER)?.length ?? 0;
-
-  if (rtlCount > 0) return 'rtl';
-  if (ltrCount > 0) return 'ltr';
-  return strongRtl && text.length > 0 ? 'rtl' : 'auto';
-}
-
-function hasRtlText(text: string): boolean {
-  RTL_CHARACTER.lastIndex = 0;
-  const result = RTL_CHARACTER.test(text);
-  RTL_CHARACTER.lastIndex = 0;
-  return result;
-}
-
-function hasLtrText(text: string): boolean {
-  LTR_CHARACTER.lastIndex = 0;
-  const result = LTR_CHARACTER.test(text);
-  LTR_CHARACTER.lastIndex = 0;
-  return result;
 }
 
 function lineStats(text: string): { lines: string[]; nonEmptyLines: string[]; indentedLines: number } {

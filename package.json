@@ -8,7 +8,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "node --experimental-strip-types --test tests/code-classifier.test.mjs",
+    "test": "node --experimental-strip-types --test tests/code-classifier.test.mjs tests/text-direction.test.mjs",
     "test:dom": "vite --config tests/vite.dom.config.ts"
   },
   "devDependencies": {
