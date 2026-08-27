@@ -168,11 +168,11 @@ Verify that the Persian text remains RTL while the command, path, URL, inline co
 
 ## Roadmap
 
-- Keep pace with ChatGPT and Claude DOM changes.
-- Expand test coverage for bidi direction detection and inline isolation.
-- Improve handling of mathematical notation and complex rendered artifacts.
-- Evaluate support for additional AI chat sites based on user feedback.
-- Explore Firefox support after the Chromium MVP is stable.
+The current v0.1.3 release remains the stable Chrome baseline for ChatGPT and Claude. Generic website support, automatic confidence-based decisions, simplified controls, broader optional permissions, and cross-browser support are future plans—not current functionality.
+
+The long-term direction is to evolve BidiFix AI into a privacy-first bidi readability engine for both AI and ordinary websites, guided by two principles: **Auto first. Safe by default.** and **When in doubt, preserve the page.** Planned architectural work will separate the bidi core, rendering engine, generic web detection, site adapters, and browser integration while preserving the extension's narrow purpose and local-only processing.
+
+See [ROADMAP.md](ROADMAP.md) for the product principles, architecture direction, permission philosophy, non-goals, and version roadmap.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
 
