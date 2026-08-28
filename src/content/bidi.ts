@@ -1,5 +1,6 @@
 import { TEXT_BLOCK_SELECTOR } from './detector';
-import { isLikelyRealCodeText } from './code-classifier';
+import { isLikelyRealCodeText } from '../core/code-classifier';
+import { findInlineLtrRanges } from '../core/inline-ltr';
 import {
   detectDirection,
   hasLtrText,
@@ -8,7 +9,6 @@ import {
 } from '../core/text-direction';
 import type { SupportedSite } from '../shared/sites';
 
-const INLINE_LTR_RUN = /(?:https?:\/\/|www\.)[^\s\u0590-\u08ff]+|[A-Za-z][A-Za-z0-9_@#.+:/\\-]*(?:[ \t]+[A-Za-z0-9][A-Za-z0-9_@#.+:/\\-]*)*/g;
 const TECHNICAL_SELECTOR = [
   'pre',
   'code',
@@ -162,8 +162,7 @@ function findInlineLtrTextNodes(block: HTMLElement): Text[] {
     acceptNode(node) {
       const parent = node.parentElement;
       if (!parent || parent.closest(INLINE_LTR_SKIP_SELECTOR)) return NodeFilter.FILTER_REJECT;
-      INLINE_LTR_RUN.lastIndex = 0;
-      return INLINE_LTR_RUN.test((node as Text).data)
+      return findInlineLtrRanges((node as Text).data).length > 0
         ? NodeFilter.FILTER_ACCEPT
         : NodeFilter.FILTER_REJECT;
     },
@@ -178,11 +177,8 @@ function isolateInlineLtrRuns(block: HTMLElement): void {
     const text = textNode.data;
     const fragment = document.createDocumentFragment();
     let cursor = 0;
-    INLINE_LTR_RUN.lastIndex = 0;
 
-    for (const match of text.matchAll(INLINE_LTR_RUN)) {
-      const start = match.index;
-      const value = match[0];
+    for (const { start, end, value } of findInlineLtrRanges(text)) {
       if (start > cursor) fragment.append(text.slice(cursor, start));
 
       const isolate = document.createElement('bdi');
@@ -191,7 +187,7 @@ function isolateInlineLtrRuns(block: HTMLElement): void {
       isolate.dataset.bidifixProcessed = 'true';
       isolate.textContent = value;
       fragment.append(isolate);
-      cursor = start + value.length;
+      cursor = end;
     }
 
     if (cursor < text.length) fragment.append(text.slice(cursor));
