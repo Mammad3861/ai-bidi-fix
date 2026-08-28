@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { isLikelyRealCodeText as coreIsLikelyRealCodeText } from '../src/core/code-classifier.ts';
 import { isLikelyRealCodeText } from '../src/content/code-classifier.ts';
 
 const RTL_PROSE_CASES = [
@@ -44,4 +45,24 @@ test('does not infer config syntax from path-labelled RTL prose', () => {
 
 test('keeps short English inline code technical', () => {
   assert.equal(isLikelyRealCodeText('README.md', { inlineCode: true }), true);
+});
+
+test('keeps the content compatibility facade identical to the core classifier', () => {
+  const samples = [
+    ...RTL_PROSE_CASES,
+    ...REAL_CODE_CASES,
+    'Open README.md and run npm run build.',
+    'README.md: این فایل را بررسی کن\nproject.godot: این فایل را باز کن',
+    'README.md',
+    '',
+  ];
+
+  for (const sample of samples) {
+    assert.equal(isLikelyRealCodeText(sample), coreIsLikelyRealCodeText(sample), sample);
+    assert.equal(
+      isLikelyRealCodeText(sample, { inlineCode: true }),
+      coreIsLikelyRealCodeText(sample, { inlineCode: true }),
+      `${sample} (inlineCode)`,
+    );
+  }
 });
