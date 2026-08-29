@@ -1,5 +1,7 @@
 import { TEXT_BLOCK_SELECTOR } from './detector';
+import { analyzeText } from '../core/analyze-text';
 import { isLikelyRealCodeText } from '../core/code-classifier';
+import { decideComposerDirection, decideRendering } from '../core/decide-rendering';
 import { findInlineLtrRanges } from '../core/inline-ltr';
 import {
   detectDirection,
@@ -368,18 +370,23 @@ export function applyBidiFix(
       lineWrapBudget.remaining > 0 &&
       text.length <= MAX_LINE_WRAP_TEXT_LENGTH &&
       shouldUseLineDirection(block, text, codeLikeRtlProse);
-    const direction = lineLevel ? 'auto' : codeLikeRtlProse ? 'rtl' : detectDirection(text, options.strongRtl);
-
     const allowInlineIsolation =
       text.length <= MAX_INLINE_ISOLATION_TEXT_LENGTH &&
       (site !== 'chatgpt' || !isChatGptDisplayedUserPrompt(message) || options.experimentalMixedPromptFix);
+    const analysis = analyzeText(text, {
+      strongRtl: options.strongRtl,
+      classifyCode: false,
+    });
+    const decision = decideRendering(analysis, {
+      lineLevel,
+      allowInlineIsolation,
+    });
+    const direction = decision.direction;
     const processedAndUnchanged =
       block.dataset.bidifixProcessedVersion === PROCESSED_VERSION &&
       block.dataset.bidifixTextSignature === signature;
     const lostInlineIsolation =
-      !lineLevel &&
-      direction === 'rtl' &&
-      allowInlineIsolation &&
+      decision.isolateInlineLtr &&
       hasUnisolatedInlineLtrRun(block);
 
     // ChatGPT can reconcile a fenced block's children after BidiFix runs. Its
@@ -397,7 +404,7 @@ export function applyBidiFix(
     setManagedDirection(block, direction);
 
     if (lineLevel) processMixedTextLinesWithBudget(block, options.strongRtl, lineWrapBudget);
-    else if (direction === 'rtl' && allowInlineIsolation) {
+    else if (decision.isolateInlineLtr) {
       isolateInlineLtrRuns(block);
     }
     else unwrapInlineLtr(block);
@@ -411,19 +418,8 @@ function composerText(composer: HTMLElement): string {
   return composer.textContent ?? '';
 }
 
-function detectComposerDirection(text: string): TextDirection {
-  if (!hasRtlText(text)) return 'auto';
-  const { nonEmptyLines } = lineStats(text);
-  const hasMixedMultilineText =
-    nonEmptyLines.length >= 2 &&
-    nonEmptyLines.some(hasRtlText) &&
-    nonEmptyLines.some((line) => hasLtrText(line) && !hasRtlText(line));
-
-  return hasMixedMultilineText ? 'auto' : 'rtl';
-}
-
 export function applyComposerFix(composer: HTMLElement): void {
-  const direction = detectComposerDirection(composerText(composer));
+  const direction = decideComposerDirection(composerText(composer));
   composer.dataset.bidifixComposer = 'true';
   composer.dataset.bidifixComposerDirection = direction;
   composer.dataset.bidifixProcessed = 'true';

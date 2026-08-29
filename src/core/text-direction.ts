@@ -1,7 +1,9 @@
+import type { TextDirection } from './types.ts';
+
 const RTL_CHARACTER = /[\u0590-\u05ff\u0600-\u06ff\u0700-\u074f\u0750-\u077f\u0780-\u07bf\u08a0-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/gu;
 const LTR_CHARACTER = /[A-Za-z\u00c0-\u02af]/g;
 
-export type TextDirection = 'rtl' | 'ltr' | 'auto';
+export type { TextDirection } from './types.ts';
 
 export function detectDirection(text: string, strongRtl: boolean): TextDirection {
   const rtlCount = text.match(RTL_CHARACTER)?.length ?? 0;
