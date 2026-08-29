@@ -1,5 +1,6 @@
 import '../src/content/styles.css';
 import { applyBidiFix, clearBidiFix } from '../src/content/bidi';
+import { isRendererOwnedNode } from '../src/content/rendering/dom-state';
 
 interface DomTestResult {
   name: string;
@@ -239,6 +240,63 @@ test('cleanup unwraps generated islands and restores managed attributes', () => 
   assertEqual(pre.hasAttribute('data-bidifix-direction'), false, 'cleanup removes direction marker');
   assertEqual(pre.hasAttribute('data-bidifix-technical'), false, 'cleanup removes technical marker');
   assertEqual(pre.hasAttribute('dir'), false, 'cleanup restores original dir');
+});
+
+test('scoped cleanup handles a managed root and restores its pre-existing dir', () => {
+  const text = 'برای ساخت پروژه npm run build را اجرا کن.';
+  const message = createMessage();
+  const { pre } = createNestedCodeBlock(message, text);
+  pre.dir = 'auto';
+
+  applyBidiFix(message, options, 'chatgpt');
+  assertEqual(pre.dataset.aiBidiOriginalDir, 'auto', 'pre-existing dir is captured');
+  assertEqual(pre.dir, 'rtl', 'managed root is RTL before scoped cleanup');
+
+  clearBidiFix(pre);
+
+  assertEqual(pre.textContent, text, 'scoped cleanup preserves exact text');
+  assertEqual(pre.dir, 'auto', 'scoped cleanup restores the pre-existing dir');
+  assertEqual(pre.hasAttribute('data-ai-bidi-original-dir'), false, 'original-dir marker removed');
+  assertEqual(pre.hasAttribute('data-bidifix-direction'), false, 'root direction marker removed');
+  assertEqual(pre.hasAttribute('data-bidifix-code-prose'), false, 'root prose marker removed');
+  assertEqual(pre.hasAttribute('data-bidifix-processed'), false, 'root processed marker removed');
+  assertEqual(pre.querySelectorAll('[data-bidifix-inline-ltr="true"]').length, 0, 'islands removed');
+
+  clearBidiFix(pre);
+  assertEqual(pre.textContent, text, 'repeated scoped cleanup preserves exact text');
+  assertEqual(pre.dir, 'auto', 'repeated scoped cleanup is idempotent');
+});
+
+test('recognizes only renderer-generated inline and line wrappers as owned', () => {
+  const ordinary = document.createElement('div');
+  const ordinaryText = document.createTextNode('ordinary page text');
+  const line = document.createElement('span');
+  line.dataset.bidifixLine = 'true';
+  line.append(document.createTextNode('generated line'));
+  const inline = document.createElement('bdi');
+  inline.dataset.bidifixInlineLtr = 'true';
+  inline.append(document.createTextNode('README.md'));
+  ordinary.append(ordinaryText, line, inline);
+  fixtureRoot.append(ordinary);
+
+  assertEqual(isRendererOwnedNode(line), true, 'line wrapper is renderer-owned');
+  assertEqual(isRendererOwnedNode(line.firstChild as Node), true, 'line text is renderer-owned');
+  assertEqual(isRendererOwnedNode(inline), true, 'inline wrapper is renderer-owned');
+  assertEqual(isRendererOwnedNode(inline.firstChild as Node), true, 'inline text is renderer-owned');
+  assertEqual(isRendererOwnedNode(ordinary), false, 'ordinary container is not renderer-owned');
+  assertEqual(isRendererOwnedNode(ordinaryText), false, 'ordinary text is not renderer-owned');
+});
+
+test('default rendering creates no experimental line or composer markers', () => {
+  const message = createMessage();
+  const paragraph = document.createElement('p');
+  paragraph.textContent = 'فایل README.md را بررسی کن.';
+  message.append(paragraph);
+
+  applyBidiFix(message, options, 'chatgpt');
+
+  assertEqual(message.querySelectorAll('[data-bidifix-line="true"]').length, 0, 'no default lines');
+  assertEqual(message.querySelectorAll('[data-bidifix-composer]').length, 0, 'no default composers');
 });
 
 window.__bidifixDomTestResults = results;
