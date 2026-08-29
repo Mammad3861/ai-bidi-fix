@@ -1,3 +1,5 @@
+import { isRendererOwnedNode } from './rendering/dom-state';
+
 export interface BidiObserver {
   disconnect(): void;
   refresh(): void;
@@ -32,20 +34,8 @@ export function createBidiObserver(processRoot: (root: ParentNode) => void): Bid
     });
   };
 
-  const isExtensionOwnedNode = (node: Node): boolean => {
-    const element = node instanceof Element ? node : node.parentElement;
-    return Boolean(
-      element?.closest(
-        [
-          '[data-bidifix-line="true"]',
-          '[data-bidifix-inline-ltr="true"]',
-        ].join(','),
-      ),
-    );
-  };
-
   const queue = (node: Node): void => {
-    if (isExtensionOwnedNode(node)) return;
+    if (isRendererOwnedNode(node)) return;
     pending.add(node.nodeType === Node.TEXT_NODE ? node.parentElement ?? document : node);
     if (scheduled) return;
     scheduled = true;

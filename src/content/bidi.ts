@@ -2,14 +2,25 @@ import { TEXT_BLOCK_SELECTOR } from './detector';
 import { analyzeText } from '../core/analyze-text';
 import { isLikelyRealCodeText } from '../core/code-classifier';
 import { decideComposerDirection, decideRendering } from '../core/decide-rendering';
-import { findInlineLtrRanges } from '../core/inline-ltr';
-import {
-  detectDirection,
-  hasLtrText,
-  hasRtlText,
-  type TextDirection,
-} from '../core/text-direction';
+import { hasLtrText, hasRtlText } from '../core/text-direction';
 import type { SupportedSite } from '../shared/sites';
+import {
+  createLineWrapBudget,
+  MAX_BLOCKS_PER_MESSAGE,
+  MAX_INLINE_ISOLATION_TEXT_LENGTH,
+  MAX_LINE_WRAP_TEXT_LENGTH,
+} from './rendering/budgets';
+import { INLINE_LTR_SKIP_SELECTOR } from './rendering/dom-state';
+import {
+  applyBlockRendering,
+  applyCodeTechnicalState,
+  applyComposerState,
+  applyMessageState,
+  applyTechnicalState,
+  clearRenderingState,
+  removeTechnicalState,
+  unwrapLineDirectionSpans,
+} from './rendering/renderer';
 
 const TECHNICAL_SELECTOR = [
   'pre',
@@ -21,46 +32,13 @@ const TECHNICAL_SELECTOR = [
   '[data-bidifix-technical="true"]',
   '[class*="font-mono"]',
 ].join(',');
-const INLINE_LTR_SKIP_SELECTOR = [
-  'kbd',
-  'samp',
-  'var',
-  'a[href]',
-  'textarea',
-  'input',
-  '[contenteditable="true"]',
-  'button',
-  '[role="button"]',
-  '[data-bidifix-inline-ltr="true"]',
-  '[data-bidifix-technical="true"]',
-].join(',');
 const CODE_LIKE_SELECTOR = 'pre, code, [class*="font-mono"]';
 const INLINE_CODE_SELECTOR = 'code:not(pre code)';
 const DIRECT_TEXT_CONTAINER_SELECTOR = 'div, span';
-const PROCESSED_VERSION = '0.1.3-code-prose-rendering-v2';
-const MAX_INLINE_ISOLATION_TEXT_LENGTH = 2000;
-const MAX_LINE_WRAP_TEXT_LENGTH = 4000;
-const MAX_LINE_WRAPPERS_PER_MESSAGE = 80;
-const MAX_BLOCKS_PER_MESSAGE = 80;
 
 export interface BidiFixOptions {
   strongRtl: boolean;
   experimentalMixedPromptFix: boolean;
-}
-
-function setManagedDirection(element: HTMLElement, direction: TextDirection): void {
-  if (element.dataset.aiBidiOriginalDir === undefined) {
-    element.dataset.aiBidiOriginalDir = element.getAttribute('dir') ?? '';
-  }
-  element.dir = direction;
-}
-
-function restoreDirection(element: HTMLElement): void {
-  const original = element.dataset.aiBidiOriginalDir;
-  if (original === undefined) return;
-  if (original) element.setAttribute('dir', original);
-  else element.removeAttribute('dir');
-  delete element.dataset.aiBidiOriginalDir;
 }
 
 function directReadableText(element: HTMLElement): string {
@@ -76,11 +54,6 @@ function lineStats(text: string): { lines: string[]; nonEmptyLines: string[]; in
   const nonEmptyLines = lines.filter((line) => line.trim().length > 0);
   const indentedLines = nonEmptyLines.filter((line) => /^\s{2,}|\t/.test(line)).length;
   return { lines, nonEmptyLines, indentedLines };
-}
-
-function textSignature(text: string): string {
-  const normalized = text.trim();
-  return `${normalized.length}:${normalized.slice(0, 40)}:${normalized.slice(-40)}`;
 }
 
 function directTextSectionCount(element: HTMLElement): number {
@@ -126,9 +99,7 @@ function shouldUseLineDirection(element: HTMLElement, text: string, codeLikeRtlP
 
 function markTechnicalContent(root: ParentNode): void {
   root.querySelectorAll<HTMLElement>('kbd, samp, var, a[href]').forEach((element) => {
-    element.dataset.bidifixTechnical = 'true';
-    element.dataset.bidifixProcessed = 'true';
-    setManagedDirection(element, 'ltr');
+    applyTechnicalState(element);
   });
 
   const codeLikeElements = new Set<HTMLElement>();
@@ -139,157 +110,12 @@ function markTechnicalContent(root: ParentNode): void {
 
   codeLikeElements.forEach((element) => {
     if (isCodeLikeRtlProse(element)) {
-      const wasTechnical = element.dataset.bidifixTechnical === 'true';
-      delete element.dataset.bidifixTechnical;
-      if (wasTechnical) {
-        delete element.dataset.bidifixProcessed;
-        restoreDirection(element);
-      }
+      removeTechnicalState(element);
       return;
     }
 
-    if (element.dataset.bidifixCodeProse === 'true') unwrapInlineLtr(element);
-    delete element.dataset.bidifixDirection;
-    delete element.dataset.bidifixCodeProse;
-    delete element.dataset.bidifixProcessedVersion;
-    delete element.dataset.bidifixTextSignature;
-    element.dataset.bidifixTechnical = 'true';
-    element.dataset.bidifixProcessed = 'true';
-    setManagedDirection(element, 'ltr');
+    applyCodeTechnicalState(element);
   });
-}
-
-function findInlineLtrTextNodes(block: HTMLElement): Text[] {
-  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      const parent = node.parentElement;
-      if (!parent || parent.closest(INLINE_LTR_SKIP_SELECTOR)) return NodeFilter.FILTER_REJECT;
-      return findInlineLtrRanges((node as Text).data).length > 0
-        ? NodeFilter.FILTER_ACCEPT
-        : NodeFilter.FILTER_REJECT;
-    },
-  });
-  const textNodes: Text[] = [];
-  while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
-  return textNodes;
-}
-
-function isolateInlineLtrRuns(block: HTMLElement): void {
-  findInlineLtrTextNodes(block).forEach((textNode) => {
-    const text = textNode.data;
-    const fragment = document.createDocumentFragment();
-    let cursor = 0;
-
-    for (const { start, end, value } of findInlineLtrRanges(text)) {
-      if (start > cursor) fragment.append(text.slice(cursor, start));
-
-      const isolate = document.createElement('bdi');
-      isolate.dir = 'ltr';
-      isolate.dataset.bidifixInlineLtr = 'true';
-      isolate.dataset.bidifixProcessed = 'true';
-      isolate.textContent = value;
-      fragment.append(isolate);
-      cursor = end;
-    }
-
-    if (cursor < text.length) fragment.append(text.slice(cursor));
-    textNode.replaceWith(fragment);
-  });
-}
-
-function hasUnisolatedInlineLtrRun(block: HTMLElement): boolean {
-  return findInlineLtrTextNodes(block).length > 0;
-}
-
-function unwrapInlineLtr(root: ParentNode): void {
-  root.querySelectorAll<HTMLElement>('[data-bidifix-inline-ltr="true"]').forEach((element) => {
-    element.replaceWith(document.createTextNode(element.textContent ?? ''));
-  });
-}
-
-function unwrapLineDirectionSpans(root: ParentNode): void {
-  root.querySelectorAll<HTMLElement>('[data-bidifix-line="true"]').forEach((element) => {
-    element.replaceWith(document.createTextNode(element.textContent ?? ''));
-  });
-}
-
-function makeLineSpan(text: string, strongRtl: boolean): HTMLElement {
-  const span = document.createElement('span');
-  const direction = detectDirection(text, strongRtl);
-  span.dataset.bidifixLine = 'true';
-  span.dataset.bidifixDirection = direction;
-  span.dataset.bidifixProcessed = 'true';
-  setManagedDirection(span, direction);
-  span.textContent = text;
-  if (direction === 'rtl') isolateInlineLtrRuns(span);
-  return span;
-}
-
-function appendDirectionalTextPart(
-  fragment: DocumentFragment,
-  text: string,
-  strongRtl: boolean,
-): void {
-  if (!text) return;
-  if (!text.trim()) {
-    fragment.append(document.createTextNode(text));
-    return;
-  }
-  fragment.append(makeLineSpan(text, strongRtl));
-}
-
-function processMixedTextLines(element: HTMLElement, strongRtl: boolean): void {
-  const existingLines = element.querySelectorAll<HTMLElement>('[data-bidifix-line="true"]');
-  if (existingLines.length > 0) {
-    existingLines.forEach((line) => {
-      const direction = detectDirection(line.textContent ?? '', strongRtl);
-      line.dataset.bidifixDirection = direction;
-      setManagedDirection(line, direction);
-      if (direction === 'rtl') isolateInlineLtrRuns(line);
-      else unwrapInlineLtr(line);
-    });
-  }
-
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      const parent = node.parentElement;
-      if (!parent || parent.closest(INLINE_LTR_SKIP_SELECTOR)) return NodeFilter.FILTER_REJECT;
-      if (parent.closest('[data-bidifix-line="true"]')) return NodeFilter.FILTER_REJECT;
-      return (node as Text).data.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-    },
-  });
-  const textNodes: Text[] = [];
-  while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
-
-  textNodes.forEach((textNode) => {
-    const parts = textNode.data.split(/(\r?\n)/);
-    const fragment = document.createDocumentFragment();
-    parts.forEach((part) => {
-      if (!part) return;
-      if (/^\r?\n$/.test(part)) {
-        fragment.append(document.createTextNode(part));
-        return;
-      }
-      appendDirectionalTextPart(fragment, part, strongRtl);
-    });
-    textNode.replaceWith(fragment);
-  });
-}
-
-function processMixedTextLinesWithBudget(
-  element: HTMLElement,
-  strongRtl: boolean,
-  budget: { remaining: number },
-): void {
-  if (budget.remaining <= 0) return;
-  if ((element.textContent?.length ?? 0) > MAX_LINE_WRAP_TEXT_LENGTH) return;
-
-  const existingCount = element.querySelectorAll('[data-bidifix-line="true"]').length;
-  processMixedTextLines(element, strongRtl);
-
-  const currentCount = element.querySelectorAll('[data-bidifix-line="true"]').length;
-  budget.remaining -= Math.max(0, currentCount - existingCount);
-  if (budget.remaining < 0) budget.remaining = 0;
 }
 
 function isChatGptDisplayedUserPrompt(message: HTMLElement): boolean {
@@ -326,12 +152,10 @@ export function applyBidiFix(
   options: BidiFixOptions,
   site: SupportedSite,
 ): void {
-  message.dataset.bidifixMessage = 'true';
-  message.dataset.bidifixProcessed = 'true';
-  if (site === 'claude') message.dataset.bidifixSite = 'claude';
+  applyMessageState(message, site === 'claude' ? 'claude' : undefined);
   if (!options.experimentalMixedPromptFix) unwrapLineDirectionSpans(message);
   markTechnicalContent(message);
-  const lineWrapBudget = { remaining: MAX_LINE_WRAPPERS_PER_MESSAGE };
+  const lineWrapBudget = createLineWrapBudget();
 
   const blocks = new Set<HTMLElement>();
   // Code-like RTL prose is the release-critical case and must not be starved by
@@ -364,7 +188,6 @@ export function applyBidiFix(
     if (!codeLikeRtlProse && block.closest(TECHNICAL_SELECTOR)) return;
 
     const text = codeLikeRtlProse ? (block.textContent?.trim() ?? '') : directReadableText(block);
-    const signature = textSignature(text);
     const lineLevel =
       options.experimentalMixedPromptFix &&
       lineWrapBudget.remaining > 0 &&
@@ -381,33 +204,15 @@ export function applyBidiFix(
       lineLevel,
       allowInlineIsolation,
     });
-    const direction = decision.direction;
-    const processedAndUnchanged =
-      block.dataset.bidifixProcessedVersion === PROCESSED_VERSION &&
-      block.dataset.bidifixTextSignature === signature;
-    const lostInlineIsolation =
-      decision.isolateInlineLtr &&
-      hasUnisolatedInlineLtrRun(block);
 
-    // ChatGPT can reconcile a fenced block's children after BidiFix runs. Its
-    // text remains identical, but React/CodeMirror removes the <bdi> islands
-    // while leaving our attributes on the stable pre/code element. Re-run only
-    // when a genuinely wrappable LTR run is present; unchanged blocks otherwise
-    // remain a no-op.
-    if (processedAndUnchanged && !lostInlineIsolation) return;
-
-    if (codeLikeRtlProse) block.dataset.bidifixCodeProse = 'true';
-    block.dataset.bidifixDirection = direction;
-    block.dataset.bidifixProcessed = 'true';
-    block.dataset.bidifixProcessedVersion = PROCESSED_VERSION;
-    block.dataset.bidifixTextSignature = signature;
-    setManagedDirection(block, direction);
-
-    if (lineLevel) processMixedTextLinesWithBudget(block, options.strongRtl, lineWrapBudget);
-    else if (decision.isolateInlineLtr) {
-      isolateInlineLtrRuns(block);
-    }
-    else unwrapInlineLtr(block);
+    applyBlockRendering(block, {
+      text,
+      decision,
+      codeLikeRtlProse,
+      lineLevel,
+      strongRtl: options.strongRtl,
+      lineWrapBudget,
+    });
   });
 }
 
@@ -420,37 +225,9 @@ function composerText(composer: HTMLElement): string {
 
 export function applyComposerFix(composer: HTMLElement): void {
   const direction = decideComposerDirection(composerText(composer));
-  composer.dataset.bidifixComposer = 'true';
-  composer.dataset.bidifixComposerDirection = direction;
-  composer.dataset.bidifixProcessed = 'true';
-  setManagedDirection(composer, direction);
+  applyComposerState(composer, direction);
 }
 
 export function clearBidiFix(root: ParentNode = document): void {
-  unwrapInlineLtr(root);
-  unwrapLineDirectionSpans(root);
-  root.querySelectorAll<HTMLElement>('[data-bidifix-composer]').forEach((element) => {
-    delete element.dataset.bidifixComposer;
-    delete element.dataset.bidifixComposerDirection;
-    delete element.dataset.bidifixProcessed;
-    restoreDirection(element);
-  });
-  root.querySelectorAll<HTMLElement>('[data-bidifix-direction]').forEach((element) => {
-    delete element.dataset.bidifixDirection;
-    delete element.dataset.bidifixCodeProse;
-    delete element.dataset.bidifixProcessedVersion;
-    delete element.dataset.bidifixTextSignature;
-    delete element.dataset.bidifixProcessed;
-    restoreDirection(element);
-  });
-  root.querySelectorAll<HTMLElement>('[data-bidifix-technical]').forEach((element) => {
-    delete element.dataset.bidifixTechnical;
-    delete element.dataset.bidifixProcessed;
-    restoreDirection(element);
-  });
-  root.querySelectorAll<HTMLElement>('[data-bidifix-message]').forEach((element) => {
-    delete element.dataset.bidifixMessage;
-    delete element.dataset.bidifixSite;
-    delete element.dataset.bidifixProcessed;
-  });
+  clearRenderingState(root);
 }
