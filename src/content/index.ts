@@ -1,14 +1,9 @@
 import './styles.css';
-import { applyBidiFix, applyComposerFix, clearBidiFix } from './bidi';
-import {
-  findAssistantMessages,
-  findComposers,
-  findContainingAssistantMessage,
-  findContainingComposer,
-} from './detector';
+import { applyComposerFix, applyDetectedRegion, clearBidiFix } from './bidi';
+import { findSiteAdapter } from './adapters/registry';
+import type { DetectedRegion } from './detection/types';
 import { createBidiObserver } from './observer';
 import type { Settings } from '../shared/settings';
-import { getCurrentSite } from '../shared/sites';
 
 // Kept local so Rollup emits a self-contained classic content script. Chrome's
 // manifest content_scripts do not support ESM imports.
@@ -31,7 +26,8 @@ function isSettingsKey(key: string): key is keyof Settings {
   return key in DEFAULT_SETTINGS;
 }
 
-const site = getCurrentSite();
+const adapter = findSiteAdapter(window.location);
+const site = adapter?.id ?? null;
 let settings: Settings = DEFAULT_SETTINGS;
 let lastDebugAt = 0;
 const MAX_MESSAGES_PER_REFRESH = 30;
@@ -48,41 +44,48 @@ function siteIsEnabled(): boolean {
 }
 
 function processRoot(root: ParentNode): void {
-  if (!site || !siteIsEnabled()) return;
+  if (!adapter || !site || !siteIsEnabled()) return;
 
-  const messages = findAssistantMessages(root, site);
+  const regions = [...adapter.findRegions(root)];
   if (root instanceof Element) {
-    const containingMessage = findContainingAssistantMessage(root, site);
-    if (containingMessage) messages.push(containingMessage);
+    const containingRegion = adapter.findContainingRegion(root);
+    if (containingRegion) regions.push(containingRegion);
   }
 
-  const uniqueMessages = [...new Set(messages)].slice(0, MAX_MESSAGES_PER_REFRESH);
-  uniqueMessages.forEach((message) =>
-    applyBidiFix(
-      message,
+  const seenRoots = new Set<HTMLElement>();
+  const uniqueRegions: DetectedRegion[] = [];
+  regions.forEach((region) => {
+    if (seenRoots.has(region.root)) return;
+    seenRoots.add(region.root);
+    uniqueRegions.push(region);
+  });
+  uniqueRegions.slice(0, MAX_MESSAGES_PER_REFRESH).forEach((region) =>
+    applyDetectedRegion(
+      region,
       {
         strongRtl: settings.strongRtl,
         experimentalMixedPromptFix: settings.experimentalMixedPromptFix,
       },
-      site,
+      adapter,
     ),
   );
-  if (uniqueMessages.length > 0 && Date.now() - lastDebugAt > 2000) {
-    debugLog(`processed ${site} messages`, uniqueMessages.length);
+  const processedRegionCount = Math.min(uniqueRegions.length, MAX_MESSAGES_PER_REFRESH);
+  if (processedRegionCount > 0 && Date.now() - lastDebugAt > 2000) {
+    debugLog(`processed ${site} messages`, processedRegionCount);
     lastDebugAt = Date.now();
   }
 
   if (settings.composerDirectionFix) {
-    const composers = findComposers(root, site);
+    const composers = [...adapter.findComposers(root)];
     if (root instanceof Element) {
-      const containingComposer = findContainingComposer(root, site);
+      const containingComposer = adapter.findContainingComposer(root);
       if (containingComposer) composers.push(containingComposer);
     }
     new Set(composers).forEach(applyComposerFix);
   }
 }
 
-if (site) {
+if (site && adapter) {
   document.documentElement.dataset.bidifixLoaded = 'true';
   document.documentElement.dataset.bidifixSite = site;
   const observer = createBidiObserver(processRoot);
@@ -91,7 +94,7 @@ if (site) {
     'input',
     (event) => {
       if (!siteIsEnabled() || !settings.composerDirectionFix || !(event.target instanceof Element)) return;
-      const composer = findContainingComposer(event.target, site);
+      const composer = adapter.findContainingComposer(event.target);
       if (composer) applyComposerFix(composer);
     },
     true,

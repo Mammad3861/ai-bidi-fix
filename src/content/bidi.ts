@@ -1,9 +1,10 @@
-import { TEXT_BLOCK_SELECTOR } from './detector';
 import { analyzeText } from '../core/analyze-text';
 import { isLikelyRealCodeText } from '../core/code-classifier';
 import { decideComposerDirection, decideRendering } from '../core/decide-rendering';
 import { hasLtrText, hasRtlText } from '../core/text-direction';
 import type { SupportedSite } from '../shared/sites';
+import { getSiteAdapter } from './adapters/registry';
+import type { DetectedRegion, SiteAdapter } from './detection/types';
 import {
   createLineWrapBudget,
   MAX_BLOCKS_PER_MESSAGE,
@@ -34,7 +35,6 @@ const TECHNICAL_SELECTOR = [
 ].join(',');
 const CODE_LIKE_SELECTOR = 'pre, code, [class*="font-mono"]';
 const INLINE_CODE_SELECTOR = 'code:not(pre code)';
-const DIRECT_TEXT_CONTAINER_SELECTOR = 'div, span';
 
 export interface BidiFixOptions {
   strongRtl: boolean;
@@ -118,16 +118,6 @@ function markTechnicalContent(root: ParentNode): void {
   });
 }
 
-function isChatGptDisplayedUserPrompt(message: HTMLElement): boolean {
-  return Boolean(message.closest('[data-message-author-role="user"]'));
-}
-
-function hasDirectTextNode(element: HTMLElement): boolean {
-  return [...element.childNodes].some(
-    (node) => node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()),
-  );
-}
-
 function collectCodeLikeRtlProseBlocks(message: HTMLElement, blocks: Set<HTMLElement>): void {
   if (isCodeLikeRtlProse(message)) blocks.add(message);
   message.querySelectorAll<HTMLElement>(CODE_LIKE_SELECTOR).forEach((element) => {
@@ -135,24 +125,13 @@ function collectCodeLikeRtlProseBlocks(message: HTMLElement, blocks: Set<HTMLEle
   });
 }
 
-function collectDirectTextBlocks(message: HTMLElement, blocks: Set<HTMLElement>): void {
-  if (message.matches(DIRECT_TEXT_CONTAINER_SELECTOR) && hasDirectTextNode(message)) {
-    blocks.add(message);
-  }
-
-  message.querySelectorAll<HTMLElement>(DIRECT_TEXT_CONTAINER_SELECTOR).forEach((element) => {
-    if (!hasDirectTextNode(element)) return;
-    if (element.closest(INLINE_LTR_SKIP_SELECTOR)) return;
-    blocks.add(element);
-  });
-}
-
-export function applyBidiFix(
-  message: HTMLElement,
+export function applyDetectedRegion(
+  region: DetectedRegion,
   options: BidiFixOptions,
-  site: SupportedSite,
+  adapter: SiteAdapter,
 ): void {
-  applyMessageState(message, site === 'claude' ? 'claude' : undefined);
+  const message = region.root;
+  applyMessageState(message, region.compatibility.messageSiteMarker);
   if (!options.experimentalMixedPromptFix) unwrapLineDirectionSpans(message);
   markTechnicalContent(message);
   const lineWrapBudget = createLineWrapBudget();
@@ -161,27 +140,7 @@ export function applyBidiFix(
   // Code-like RTL prose is the release-critical case and must not be starved by
   // the per-message budget in long responses with many ordinary prose nodes.
   collectCodeLikeRtlProseBlocks(message, blocks);
-  if (message.matches(TEXT_BLOCK_SELECTOR)) blocks.add(message);
-  message.querySelectorAll<HTMLElement>(TEXT_BLOCK_SELECTOR).forEach((block) => blocks.add(block));
-  collectDirectTextBlocks(message, blocks);
-
-  if (site === 'claude') {
-    // Claude sometimes emits prose as nested divs without p/li semantics.
-    // Include direct-text divs; the technical-content exclusions below still
-    // protect code and controls.
-    message.querySelectorAll<HTMLElement>('div').forEach((div) => {
-      if (hasDirectTextNode(div)) blocks.add(div);
-    });
-  }
-
-  // Claude occasionally streams prose as bare spans instead of paragraph tags.
-  // Process those leaf spans without forcing a direction onto broad parents.
-  message.querySelectorAll<HTMLElement>('span').forEach((span) => {
-    if (!span.textContent?.trim() || span.closest(TECHNICAL_SELECTOR)) return;
-    if (span.closest(TEXT_BLOCK_SELECTOR)) return;
-    if (span.querySelector(TEXT_BLOCK_SELECTOR)) return;
-    blocks.add(span);
-  });
+  adapter.findBlocks(region).forEach((candidate) => blocks.add(candidate.element));
 
   [...blocks].slice(0, MAX_BLOCKS_PER_MESSAGE).forEach((block) => {
     const codeLikeRtlProse = isCodeLikeRtlProse(block);
@@ -195,7 +154,8 @@ export function applyBidiFix(
       shouldUseLineDirection(block, text, codeLikeRtlProse);
     const allowInlineIsolation =
       text.length <= MAX_INLINE_ISOLATION_TEXT_LENGTH &&
-      (site !== 'chatgpt' || !isChatGptDisplayedUserPrompt(message) || options.experimentalMixedPromptFix);
+      (region.compatibility.inlineIsolation !== 'experimental-only' ||
+        options.experimentalMixedPromptFix);
     const analysis = analyzeText(text, {
       strongRtl: options.strongRtl,
       classifyCode: false,
@@ -214,6 +174,17 @@ export function applyBidiFix(
       lineWrapBudget,
     });
   });
+}
+
+export function applyBidiFix(
+  message: HTMLElement,
+  options: BidiFixOptions,
+  site: SupportedSite,
+): void {
+  const adapter = getSiteAdapter(site);
+  if (!adapter) return;
+  const region = adapter.describeRegion(message);
+  applyDetectedRegion(region, options, adapter);
 }
 
 function composerText(composer: HTMLElement): string {
