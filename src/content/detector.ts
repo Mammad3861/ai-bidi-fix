@@ -11,9 +11,14 @@ const CHATGPT_MESSAGE_SELECTORS = [
   'main article [class*="whitespace-pre-wrap"]',
   '[data-message-author-role="user"] [class~="whitespace-pre-wrap"]',
   '[data-message-author-role="user"] [class*="whitespace-pre-wrap"]',
+  // Current ChatGPT uses semantic markdown roots instead of author-role
+  // attributes/articles. Keep roots inside content, away from turn actions.
+  '[data-markdown-text-style="assistant-message"]',
+  '[data-user-message-bubble="true"] [data-markdown-text-tone="user-message"]',
+  '[data-user-message-bubble="true"] [class~="whitespace-pre-wrap"]',
 ] as const;
 
-const CHATGPT_EXCLUDED_SELECTOR = [
+export const CHATGPT_EXCLUDED_SELECTOR = [
   '#prompt-textarea',
   'form',
   'textarea',
@@ -21,10 +26,23 @@ const CHATGPT_EXCLUDED_SELECTOR = [
   '[contenteditable="true"]',
   '[role="textbox"]',
   'button',
+  '[role="button"]',
+  '[role="toolbar"]',
+  '[data-markdown-copy="exclude"]',
+  '[data-testid="chatgpt-citation"]',
+  'span:has(> [data-testid="chatgpt-citation"])',
   'nav',
   'aside',
   '[role="dialog"]',
 ].join(',');
+
+export function isChatGptExcludedContent(element: HTMLElement): boolean {
+  return Boolean(element.closest(CHATGPT_EXCLUDED_SELECTOR));
+}
+
+export function isChatGptDisplayedUserPrompt(element: HTMLElement): boolean {
+  return Boolean(element.closest('[data-message-author-role="user"], [data-user-message-bubble="true"]'));
+}
 
 // Prefer semantic/data attributes. Class-based selectors are retained only as
 // fallbacks because Claude changes generated class names frequently.
@@ -185,10 +203,17 @@ function isAllowedChatGptMessage(element: HTMLElement): boolean {
   if (pageMain ? !element.closest('main, [role="main"]') : !document.body?.contains(element)) {
     return false;
   }
-  if (element.closest(CHATGPT_EXCLUDED_SELECTOR)) return false;
-  if (!element.closest('article[data-testid^="conversation-turn-"], [data-message-author-role]')) {
+  if (isChatGptExcludedContent(element)) return false;
+  if (!element.closest('article[data-testid^="conversation-turn-"], [data-message-author-role], [data-markdown-text-style="assistant-message"], [data-user-message-bubble="true"]')) {
     return false;
   }
+  // Rich user text already supplies its own content boundary. Do not also
+  // process the surrounding whitespace wrapper (or a collapsed-card control).
+  if (
+    element.closest('[data-user-message-bubble="true"]') &&
+    element.matches('[class~="whitespace-pre-wrap"]') &&
+    element.querySelector('[data-markdown-text-tone="user-message"]')
+  ) return false;
   return Boolean(element.textContent?.trim());
 }
 

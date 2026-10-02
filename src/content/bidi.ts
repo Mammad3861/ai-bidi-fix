@@ -1,4 +1,9 @@
-import { TEXT_BLOCK_SELECTOR } from './detector';
+import {
+  CHATGPT_EXCLUDED_SELECTOR,
+  isChatGptDisplayedUserPrompt,
+  isChatGptExcludedContent,
+  TEXT_BLOCK_SELECTOR,
+} from './detector';
 import { isLikelyRealCodeText } from './code-classifier';
 import type { SupportedSite } from '../shared/sites';
 
@@ -59,8 +64,11 @@ function restoreDirection(element: HTMLElement): void {
   delete element.dataset.aiBidiOriginalDir;
 }
 
-function directReadableText(element: HTMLElement): string {
+function directReadableText(element: HTMLElement, site: SupportedSite): string {
   const clone = element.cloneNode(true) as HTMLElement;
+  if (site === 'chatgpt') {
+    clone.querySelectorAll<HTMLElement>(CHATGPT_EXCLUDED_SELECTOR).forEach((node) => node.remove());
+  }
   clone.querySelectorAll<HTMLElement>(TECHNICAL_SELECTOR).forEach((node) => {
     if (node.dataset.bidifixDirection !== 'rtl') node.remove();
   });
@@ -143,8 +151,9 @@ function shouldUseLineDirection(element: HTMLElement, text: string, codeLikeRtlP
   return isMixedNaturalLanguageBlock(element, text);
 }
 
-function markTechnicalContent(root: ParentNode): void {
+function markTechnicalContent(root: ParentNode, site: SupportedSite): void {
   root.querySelectorAll<HTMLElement>('kbd, samp, var, a[href]').forEach((element) => {
+    if (site === 'chatgpt' && isChatGptExcludedContent(element)) return;
     element.dataset.bidifixTechnical = 'true';
     element.dataset.bidifixProcessed = 'true';
     setManagedDirection(element, 'ltr');
@@ -157,6 +166,7 @@ function markTechnicalContent(root: ParentNode): void {
   });
 
   codeLikeElements.forEach((element) => {
+    if (site === 'chatgpt' && isChatGptExcludedContent(element)) return;
     if (isCodeLikeRtlProse(element)) {
       const wasTechnical = element.dataset.bidifixTechnical === 'true';
       delete element.dataset.bidifixTechnical;
@@ -315,10 +325,6 @@ function processMixedTextLinesWithBudget(
   if (budget.remaining < 0) budget.remaining = 0;
 }
 
-function isChatGptDisplayedUserPrompt(message: HTMLElement): boolean {
-  return Boolean(message.closest('[data-message-author-role="user"]'));
-}
-
 function hasDirectTextNode(element: HTMLElement): boolean {
   return [...element.childNodes].some(
     (node) => node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()),
@@ -353,7 +359,7 @@ export function applyBidiFix(
   message.dataset.bidifixProcessed = 'true';
   if (site === 'claude') message.dataset.bidifixSite = 'claude';
   if (!options.experimentalMixedPromptFix) unwrapLineDirectionSpans(message);
-  markTechnicalContent(message);
+  markTechnicalContent(message, site);
   const lineWrapBudget = { remaining: MAX_LINE_WRAPPERS_PER_MESSAGE };
 
   const blocks = new Set<HTMLElement>();
@@ -383,10 +389,11 @@ export function applyBidiFix(
   });
 
   [...blocks].slice(0, MAX_BLOCKS_PER_MESSAGE).forEach((block) => {
+    if (site === 'chatgpt' && isChatGptExcludedContent(block)) return;
     const codeLikeRtlProse = isCodeLikeRtlProse(block);
     if (!codeLikeRtlProse && block.closest(TECHNICAL_SELECTOR)) return;
 
-    const text = codeLikeRtlProse ? (block.textContent?.trim() ?? '') : directReadableText(block);
+    const text = codeLikeRtlProse ? (block.textContent?.trim() ?? '') : directReadableText(block, site);
     const signature = textSignature(text);
     const lineLevel =
       options.experimentalMixedPromptFix &&
