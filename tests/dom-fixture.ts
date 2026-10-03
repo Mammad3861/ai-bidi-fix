@@ -377,6 +377,163 @@ test('keeps Claude detection and rendering unchanged with the ChatGPT compatibil
   assertEqual(main.querySelectorAll('[data-bidifix-line], [data-bidifix-composer]').length, 0, 'Claude safe defaults');
 });
 
+function createReportedInlineProse(): { main: HTMLElement; message: HTMLElement; paragraph: HTMLElement } {
+  const main = document.createElement('main');
+  // Sanitized native inline structure supplied by manual live DevTools inspection.
+  // The Worked-for control precedes the response; it is not the prose owner.
+  main.innerHTML = `<button id="worked-for">Worked for 3m 46s</button>
+    <div id="reported-message" data-markdown-text-style="assistant-message" dir="auto">
+      <p id="reported-paragraph" dir="auto"><strong><span>swap</span><bdi>این سرور هنوز بررسی نشده است.</bdi></strong><span> محدودیت فعلی backend برابر </span><strong><span>۰٫۳ هسته و </span><bdi>۳۸۴MiB RAM</bdi></strong><span> است؛ مصرفش حدود ۷۳MiB بود. فعلاً دلیلی برای افزایش منابع یا افزودن swap نداریم.</span></p>
+      <p>مصرف <span>RAM</span> حدود <bdi>338MiB</bdi> است و محدودیت فعلی backend هنوز بررسی نشده است.</p>
+      <p>swap حدود 32MiB بود و فعلاً دلیلی برای افزایش منابع نداریم.</p>
+      <p>healthcheck در Docker باید موفق شود و Supervisor فقط backend را جایگزین می‌کند. فایل src/content/bidi.ts و دستور npm run build و https://claude.ai را بررسی کن.<span id="reported-citation"><a data-testid="chatgpt-citation" href="https://example.com">Source</a></span></p>
+      <pre id="reported-source"><code>const message = "سلام";\n// توضیح فارسی\nconsole.log(message);</code></pre>
+      <div dir="ltr"><code id="reported-plain" class="whitespace-pre-wrap! block">فایل docs/ICON_PIPELINE.md را بررسی کن و سپس npm run build را اجرا کن.</code></div>
+    </div>
+    <form><div contenteditable="true" role="textbox">متن ویرایشگر backend</div></form>`;
+  fixtureRoot.append(main);
+  return { main, message: requireElement('#reported-message'), paragraph: requireElement('#reported-paragraph') };
+}
+
+test('ChatGPT semantic prose owns direction instead of its nested formatting spans', () => {
+  const { main, message, paragraph } = createReportedInlineProse();
+  const text = main.textContent;
+  const nativeBdis = [...paragraph.querySelectorAll('bdi')];
+  assertEqual(findContainingAssistantMessage(paragraph, 'chatgpt'), message, 'prose belongs to normal assistant markdown');
+  applyBidiFix(message, options, 'chatgpt');
+  assertEqual(paragraph.dir, 'rtl', 'paragraph owns RTL direction');
+  assertEqual(getComputedStyle(paragraph).direction, 'rtl', 'computed paragraph direction');
+  assertEqual(getComputedStyle(paragraph).unicodeBidi, 'plaintext', 'computed paragraph bidi');
+  assertEqual(getComputedStyle(paragraph).textAlign, 'right', 'computed paragraph alignment');
+  paragraph.querySelectorAll<HTMLElement>('span').forEach((span) => {
+    assertEqual(span.hasAttribute('data-bidifix-direction'), false, 'formatting span has no independent direction');
+    assertEqual(span.hasAttribute('dir'), false, 'formatting span inherits paragraph direction');
+    assertEqual(getComputedStyle(span).direction, 'rtl', 'formatting span inherits RTL');
+  });
+  const islands = [...message.querySelectorAll<HTMLElement>('[data-bidifix-inline-ltr]')];
+  for (const word of ['swap', 'backend', 'RAM', 'healthcheck', 'Docker', 'Supervisor', 'src/content/bidi.ts', 'npm run build', 'https://claude.ai']) {
+    assert(islands.some((island) => island.textContent === word), `English technical island: ${word}`);
+  }
+  islands.forEach((island) => {
+    assertEqual(getComputedStyle(island).direction, 'ltr', 'English island LTR');
+    assertEqual(getComputedStyle(island).unicodeBidi, 'isolate', 'English island isolated');
+  });
+  expectRealCode(requireElement('#reported-source'), 'const message = "سلام";\n// توضیح فارسی\nconsole.log(message);');
+  expectRtlProse(requireElement('#reported-plain'), 'فایل docs/ICON_PIPELINE.md را بررسی کن و سپس npm run build را اجرا کن.', ['docs/ICON_PIPELINE.md', 'npm run build']);
+  assertEqual(main.querySelectorAll('[data-bidifix-line], [data-bidifix-composer]').length, 0, 'safe default markers');
+  assertEqual(requireElement('#reported-citation').querySelectorAll('[data-bidifix-direction], [data-bidifix-inline-ltr]').length, 0, 'citation stays untouched');
+  assertEqual(requireElement('#worked-for').hasAttribute('data-bidifix-direction'), false, 'Worked-for control is untouched');
+  assertEqual(main.textContent, text, 'text characters unchanged');
+  const selection = document.createRange();
+  selection.selectNodeContents(paragraph);
+  assertEqual(selection.toString(), paragraph.textContent, 'selection/copy text unchanged');
+  const html = message.innerHTML;
+  applyBidiFix(message, options, 'chatgpt');
+  assertEqual(message.innerHTML, html, 'unchanged rendering is idempotent');
+  message.querySelectorAll<HTMLElement>('[data-bidifix-inline-ltr]').forEach((island) => island.replaceWith(document.createTextNode(island.textContent ?? '')));
+  applyBidiFix(message, options, 'chatgpt');
+  assertEqual(message.innerHTML, html, 'reconciliation restores islands without formatting-span directions');
+  clearBidiFix(main);
+  assertEqual(paragraph.dir, 'auto', 'cleanup restores native paragraph dir');
+  assertEqual(main.textContent, text, 'cleanup preserves text');
+  assert(nativeBdis.every((bdi) => paragraph.contains(bdi)), 'cleanup retains native bdi elements');
+  assertEqual(main.querySelectorAll('[data-bidifix-direction], [data-bidifix-inline-ltr], [data-bidifix-technical], [data-bidifix-message], [data-ai-bidi-original-dir]').length, 0, 'cleanup removes extension state');
+});
+
+for (const [name, content, direction] of [
+  ['direct text', 'متن backend', 'rtl'],
+  ['native bdi child', '<bdi>swap</bdi>', 'ltr'],
+  ['formatting child', '<strong>متن backend</strong>', 'rtl'],
+] as const) test(`restores a managed ChatGPT span with ${name} reused inside a semantic paragraph`, () => {
+  const message = createMessage();
+  const span = document.createElement('span');
+  span.dir = 'auto';
+  span.innerHTML = content;
+  message.append(span);
+  applyBidiFix(message, options, 'chatgpt');
+  assertEqual(span.dataset.bidifixDirection, direction, 'bare streaming span initially owns direction');
+  const paragraph = document.createElement('p');
+  paragraph.append('متن فارسی ', span);
+  message.append(paragraph);
+  const text = message.textContent;
+  applyBidiFix(message, options, 'chatgpt');
+  assertEqual(paragraph.dataset.bidifixDirection, 'rtl', 'new paragraph owns direction');
+  assertEqual(span.hasAttribute('data-bidifix-direction'), false, 'reused span loses independent direction');
+  assertEqual(span.dir, 'auto', 'reused span restores its native dir');
+  assertEqual(span.hasAttribute('data-ai-bidi-original-dir'), false, 'managed original-dir state is removed');
+  assertEqual(span.hasAttribute('data-bidifix-processed-version'), false, 'stale processing signature is removed');
+  assertEqual(span.hasAttribute('data-bidifix-text-signature'), false, 'stale text signature is removed');
+  assertEqual(span.hasAttribute('data-bidifix-processed'), false, 'stale processed marker is removed');
+  assertEqual(span.querySelectorAll('[data-bidifix-inline-ltr]').length, 1, 'existing English island is retained without duplication');
+  assertEqual(message.textContent, text, 'reparenting preserves text');
+  const html = message.innerHTML;
+  applyBidiFix(message, options, 'chatgpt');
+  assertEqual(message.innerHTML, html, 'reparented rendering is idempotent');
+  clearBidiFix(fixtureRoot);
+  assertEqual(message.textContent, text, 'reparented cleanup preserves text');
+  assertEqual(span.dir, 'auto', 'cleanup keeps native span direction');
+});
+
+test('ChatGPT semantic span ownership applies to lists, headings, quotes, and table cells', () => {
+  const message = createMessage();
+  message.innerHTML = '<ul><li><span>متن backend</span></li></ul><h2><span>متن Docker</span></h2><blockquote><span>متن swap</span></blockquote><table><tbody><tr><th><span>متن RAM</span></th><td><span class="whitespace-pre-wrap">متن Supervisor</span></td></tr></tbody></table><p>متن <span class="font-mono">فایل README.md را بررسی کن.</span></p>';
+  const text = message.textContent;
+  applyBidiFix(message, options, 'chatgpt');
+  message.querySelectorAll<HTMLElement>('li, h2, blockquote, th, td').forEach((owner) => {
+    assertEqual(owner.dataset.bidifixDirection, 'rtl', 'semantic owner RTL');
+    const span = owner.querySelector('span');
+    assert(span, 'formatting span exists');
+    assertEqual(span.hasAttribute('data-bidifix-direction'), false, 'formatting span has no independent direction even when matching whitespace selector');
+    assertEqual(span.hasAttribute('dir'), false, 'formatting span has no generated dir');
+    assertEqual(getComputedStyle(span).direction, 'rtl', 'formatting span inherits owner direction');
+  });
+  expectRtlProse(message.querySelector<HTMLElement>('.font-mono') as HTMLElement, 'فایل README.md را بررسی کن.', ['README.md']);
+  assertEqual(message.textContent, text, 'all semantic and code-like characters preserved');
+});
+
+test('isolates compact memory quantities including ASCII, Persian, and Arabic digits as whole tokens', () => {
+  const message = createMessage();
+  const paragraph = document.createElement('p');
+  const text = 'مصرف 338MiB و 32MiB و 73MiB و 384MiB RAM و ۳۸۴MiB و ۷۳MiB و ٣٨٤MiB است؛ شماره ۳۸۴ و ۳۲، مقدار ۰٫۳ هسته است.';
+  paragraph.textContent = text;
+  message.append(paragraph);
+  applyBidiFix(message, options, 'chatgpt');
+  const expected = ['338MiB', '32MiB', '73MiB', '384MiB RAM', '۳۸۴MiB', '۷۳MiB', '٣٨٤MiB'];
+  const islands = [...paragraph.querySelectorAll<HTMLElement>('[data-bidifix-inline-ltr]')];
+  assertEqual(JSON.stringify(islands.map((island) => island.textContent)), JSON.stringify(expected), 'only complete technical quantities are isolated in order');
+  islands.forEach((island) => {
+    const node = island.firstChild;
+    assert(node instanceof Text, 'quantity is a single text node inside its island');
+    const unitStart = node.data.indexOf('MiB');
+    const digits = document.createRange();
+    digits.setStart(node, 0);
+    digits.setEnd(node, unitStart);
+    const unit = document.createRange();
+    unit.setStart(node, unitStart);
+    unit.setEnd(node, unitStart + 3);
+    assert(digits.getBoundingClientRect().left < unit.getBoundingClientRect().left, 'digits visually precede unit inside LTR island');
+  });
+  assertEqual(paragraph.textContent, text, 'number characters and punctuation preserved');
+  const html = paragraph.innerHTML;
+  applyBidiFix(message, options, 'chatgpt');
+  assertEqual(paragraph.innerHTML, html, 'quantity rendering is idempotent');
+  clearBidiFix(fixtureRoot);
+  assertEqual(paragraph.textContent, text, 'quantity cleanup preserves text');
+});
+
+test('preserves ChatGPT standalone spans and Claude nested/bare streaming span processing', () => {
+  for (const site of ['chatgpt', 'claude'] as const) {
+    const message = createMessage();
+    message.innerHTML = '<span id="bare">متن backend</span><p><strong><span id="formatted">متن Docker</span></strong></p>';
+    applyBidiFix(message, options, site);
+    assertEqual(requireElement<HTMLElement>('#bare').dataset.bidifixDirection, 'rtl', `${site} bare span remains processed`);
+    assertEqual(requireElement<HTMLElement>('#formatted').dataset.bidifixDirection, site === 'claude' ? 'rtl' : undefined, `${site} contextual formatting span behavior`);
+    assertEqual(message.querySelectorAll('[data-bidifix-inline-ltr]').length, 2, `${site} English isolation remains available`);
+    clearBidiFix(fixtureRoot);
+    message.remove();
+  }
+});
+
 window.__bidifixDomTestResults = results;
 results.forEach((result) => {
   const item = document.createElement('li');

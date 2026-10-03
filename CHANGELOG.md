@@ -13,6 +13,15 @@ All notable changes to BidiFix AI are documented in this file.
 - Restored missing inline LTR islands when ChatGPT reconciles a processed fenced block's children without changing its text.
 - Added a browser DOM regression fixture for current ChatGPT-style nested `pre`/`code` and read-only CodeMirror markup, computed styles, state transitions, cleanup, and idempotency.
 
+## [0.1.5] - 2026-10-03
+
+### Fixed
+
+- Fixed mixed Persian/English prose ordering in the current ChatGPT web interface.
+- Stopped ordinary nested formatting spans from taking independent block directions inside ChatGPT prose, including reused streaming spans.
+- Kept compact MiB quantities together during inline LTR isolation, including Persian and Arabic digits.
+- No new permissions or features; safe defaults and actual-code LTR rendering are preserved.
+
 ## [0.1.4] - 2026-10-02
 
 ### Fixed

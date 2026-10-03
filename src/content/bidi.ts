@@ -9,7 +9,8 @@ import type { SupportedSite } from '../shared/sites';
 
 const RTL_CHARACTER = /[\u0590-\u05ff\u0600-\u06ff\u0700-\u074f\u0750-\u077f\u0780-\u07bf\u08a0-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/gu;
 const LTR_CHARACTER = /[A-Za-z\u00c0-\u02af]/g;
-const INLINE_LTR_RUN = /(?:https?:\/\/|www\.)[^\s\u0590-\u08ff]+|[A-Za-z][A-Za-z0-9_@#.+:/\\-]*(?:[ \t]+[A-Za-z0-9][A-Za-z0-9_@#.+:/\\-]*)*/g;
+// Keep a compact MiB quantity together without treating bare RTL digits as LTR.
+const INLINE_LTR_RUN = /(?:https?:\/\/|www\.)[^\s\u0590-\u08ff]+|(?:[0-9\u0660-\u0669\u06f0-\u06f9]+(?=MiB(?![A-Za-z0-9_])))?[A-Za-z][A-Za-z0-9_@#.+:/\\-]*(?:[ \t]+[A-Za-z0-9][A-Za-z0-9_@#.+:/\\-]*)*/g;
 const TECHNICAL_SELECTOR = [
   'pre',
   'code',
@@ -382,13 +383,40 @@ export function applyBidiFix(
   // Claude occasionally streams prose as bare spans instead of paragraph tags.
   // Process those leaf spans without forcing a direction onto broad parents.
   message.querySelectorAll<HTMLElement>('span').forEach((span) => {
+    // A reused managed wrapper may now contain only elements, not direct text.
+    // Include it for ownership cleanup even though the bare-span fallback skips it.
+    if (site === 'chatgpt' && span.dataset.bidifixDirection !== undefined && !span.matches(CODE_LIKE_SELECTOR)) {
+      const owner = span.parentElement?.closest<HTMLElement>(TEXT_BLOCK_SELECTOR);
+      if (owner && blocks.has(owner)) blocks.add(span);
+    }
     if (!span.textContent?.trim() || span.closest(TECHNICAL_SELECTOR)) return;
     if (span.closest(TEXT_BLOCK_SELECTOR)) return;
     if (span.querySelector(TEXT_BLOCK_SELECTOR)) return;
     blocks.add(span);
   });
 
-  [...blocks].slice(0, MAX_BLOCKS_PER_MESSAGE).forEach((block) => {
+  // ChatGPT splits a semantic paragraph into formatting spans. Giving each
+  // span its own plaintext direction creates competing inline bidi contexts.
+  // Let the selected semantic owner render them; keep Claude's streaming spans
+  // and independently classified code-like prose on their existing paths.
+  const renderBlocks = [...blocks].filter((block) => {
+    if (site !== 'chatgpt' || block.tagName !== 'SPAN' || block.matches(CODE_LIKE_SELECTOR)) return true;
+    const owner = block.parentElement?.closest<HTMLElement>(TEXT_BLOCK_SELECTOR);
+    if (!owner || !blocks.has(owner)) return true;
+    // Streaming may reuse a span previously rendered outside a paragraph.
+    // Restore only our managed block state; retain native dir and LTR islands.
+    if (block.dataset.bidifixDirection !== undefined) {
+      delete block.dataset.bidifixDirection;
+      delete block.dataset.bidifixCodeProse;
+      delete block.dataset.bidifixProcessed;
+      delete block.dataset.bidifixProcessedVersion;
+      delete block.dataset.bidifixTextSignature;
+      restoreDirection(block);
+    }
+    return false;
+  });
+
+  renderBlocks.slice(0, MAX_BLOCKS_PER_MESSAGE).forEach((block) => {
     if (site === 'chatgpt' && isChatGptExcludedContent(block)) return;
     const codeLikeRtlProse = isCodeLikeRtlProse(block);
     if (!codeLikeRtlProse && block.closest(TECHNICAL_SELECTOR)) return;
