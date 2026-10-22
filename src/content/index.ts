@@ -2,49 +2,28 @@ import './styles.css';
 import { applyComposerFix, applyDetectedRegion, clearBidiFix } from './bidi';
 import { findSiteAdapter } from './adapters/registry';
 import type { DetectedRegion } from './detection/types';
-import { createBidiObserver } from './observer';
-import type { Settings } from '../shared/settings';
-
-// Kept local so Rollup emits a self-contained classic content script. Chrome's
-// manifest content_scripts do not support ESM imports.
-const DEFAULT_SETTINGS: Settings = {
-  enabled: true,
-  chatgptEnabled: true,
-  claudeEnabled: true,
-  strongRtl: false,
-  composerDirectionFix: false,
-  experimentalMixedPromptFix: false,
-  debug: false,
-};
-
-async function getContentSettings(): Promise<Settings> {
-  const stored = await chrome.storage.sync.get(DEFAULT_SETTINGS);
-  return { ...DEFAULT_SETTINGS, ...stored } as Settings;
-}
-
-function isSettingsKey(key: string): key is keyof Settings {
-  return key in DEFAULT_SETTINGS;
-}
+import { createBidiObserver, type BidiObserver } from './observer';
+import { createContentController, type ContentController } from './controller';
 
 const adapter = findSiteAdapter(window.location);
 const site = adapter?.id ?? null;
-let settings: Settings = DEFAULT_SETTINGS;
+let controller: ContentController | null = null;
 let lastDebugAt = 0;
 const MAX_MESSAGES_PER_REFRESH = 30;
 
 function debugLog(message: string, details?: unknown): void {
-  if (!settings.debug) return;
+  if (!controller?.getSettings()?.debug) return;
   if (details === undefined) console.debug(`[BidiFix AI] ${message}`);
   else console.debug(`[BidiFix AI] ${message}`, details);
 }
 
 function siteIsEnabled(): boolean {
-  if (!site || !settings.enabled) return false;
-  return site === 'chatgpt' ? settings.chatgptEnabled : settings.claudeEnabled;
+  return controller?.isEnabled() ?? false;
 }
 
 function processRoot(root: ParentNode): void {
-  if (!adapter || !site || !siteIsEnabled()) return;
+  const settings = controller?.getSettings();
+  if (!adapter || !site || !settings || !siteIsEnabled()) return;
 
   const regions = [...adapter.findRegions(root)];
   if (root instanceof Element) {
@@ -86,24 +65,25 @@ function processRoot(root: ParentNode): void {
 }
 
 if (site && adapter) {
-  document.documentElement.dataset.bidifixLoaded = 'true';
-  document.documentElement.dataset.bidifixSite = site;
-  const observer = createBidiObserver(processRoot);
-
-  document.addEventListener(
-    'input',
-    (event) => {
-      if (!siteIsEnabled() || !settings.composerDirectionFix || !(event.target instanceof Element)) return;
-      const composer = adapter.findContainingComposer(event.target);
-      if (composer) applyComposerFix(composer);
+  let observer: BidiObserver | null = null;
+  controller = createContentController(site, {
+    startProcessing() {
+      document.documentElement.dataset.bidifixLoaded = 'true';
+      document.documentElement.dataset.bidifixSite = site;
+      observer = createBidiObserver(processRoot);
+      document.addEventListener(
+        'input',
+        (event) => {
+          if (!siteIsEnabled() || !controller?.getSettings()?.composerDirectionFix || !(event.target instanceof Element)) return;
+          const composer = adapter.findContainingComposer(event.target);
+          if (composer) applyComposerFix(composer);
+        },
+        true,
+      );
+      debugLog(`loaded on ${site}`);
     },
-    true,
-  );
-
-  void getContentSettings().then((loaded) => {
-    settings = loaded;
-    debugLog(`loaded on ${site}`);
-    if (siteIsEnabled()) observer.refresh();
+    refresh: () => observer?.refresh(),
+    cleanup: clearBidiFix,
   });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -111,16 +91,5 @@ if (site && adapter) {
     sendResponse({ site });
   });
 
-  chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== 'sync') return;
-    let relevantChange = false;
-    for (const [key, change] of Object.entries(changes)) {
-      if (!isSettingsKey(key)) continue;
-      settings = { ...settings, [key]: change.newValue ?? DEFAULT_SETTINGS[key] };
-      relevantChange = true;
-    }
-    if (!relevantChange) return;
-    clearBidiFix();
-    if (siteIsEnabled()) observer.refresh();
-  });
+  void controller.start();
 }

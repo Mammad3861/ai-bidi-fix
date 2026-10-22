@@ -35,3 +35,19 @@ export async function resetSettings(): Promise<void> {
 export function isSettingsKey(key: string): key is keyof Settings {
   return key in DEFAULT_SETTINGS;
 }
+
+export function subscribeSettings(listener: (patch: Partial<Settings>) => void): () => void {
+  const onChanged = (
+    changes: Record<string, chrome.storage.StorageChange>,
+    areaName: string,
+  ): void => {
+    if (areaName !== 'sync') return;
+    const patch: Partial<Settings> = {};
+    for (const [key, change] of Object.entries(changes)) {
+      if (isSettingsKey(key)) patch[key] = change.newValue ?? DEFAULT_SETTINGS[key];
+    }
+    if (Object.keys(patch).length > 0) listener(patch);
+  };
+  chrome.storage.onChanged.addListener(onChanged);
+  return () => chrome.storage.onChanged.removeListener(onChanged);
+}
