@@ -13,7 +13,7 @@ export interface RegionCompatibility {
 export interface DetectedRegion {
   root: HTMLElement;
   role: RegionRole;
-  source: 'adapter';
+  source: 'adapter' | 'generic';
   sourceId: string;
   priority: number;
   compatibility: RegionCompatibility;
