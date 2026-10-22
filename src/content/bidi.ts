@@ -19,6 +19,7 @@ import {
   applyMessageState,
   applyTechnicalState,
   clearRenderingState,
+  releaseBlockDirection,
   removeTechnicalState,
   unwrapLineDirectionSpans,
 } from './rendering/renderer';
@@ -41,8 +42,11 @@ export interface BidiFixOptions {
   experimentalMixedPromptFix: boolean;
 }
 
-function directReadableText(element: HTMLElement): string {
+function directReadableText(element: HTMLElement, excludedSelector?: string): string {
   const clone = element.cloneNode(true) as HTMLElement;
+  if (excludedSelector) {
+    clone.querySelectorAll<HTMLElement>(excludedSelector).forEach((node) => node.remove());
+  }
   clone.querySelectorAll<HTMLElement>(TECHNICAL_SELECTOR).forEach((node) => {
     if (node.dataset.bidifixDirection !== 'rtl') node.remove();
   });
@@ -97,8 +101,9 @@ function shouldUseLineDirection(element: HTMLElement, text: string, codeLikeRtlP
   return isMixedNaturalLanguageBlock(element, text);
 }
 
-function markTechnicalContent(root: ParentNode): void {
+function markTechnicalContent(root: ParentNode, excludedSelector?: string): void {
   root.querySelectorAll<HTMLElement>('kbd, samp, var, a[href]').forEach((element) => {
+    if (excludedSelector && element.closest(excludedSelector)) return;
     applyTechnicalState(element);
   });
 
@@ -109,6 +114,7 @@ function markTechnicalContent(root: ParentNode): void {
   });
 
   codeLikeElements.forEach((element) => {
+    if (excludedSelector && element.closest(excludedSelector)) return;
     if (isCodeLikeRtlProse(element)) {
       removeTechnicalState(element);
       return;
@@ -131,22 +137,29 @@ export function applyDetectedRegion(
   adapter: SiteAdapter,
 ): void {
   const message = region.root;
+  const excludedSelector = region.compatibility.excludedContentSelector;
   applyMessageState(message, region.compatibility.messageSiteMarker);
   if (!options.experimentalMixedPromptFix) unwrapLineDirectionSpans(message);
-  markTechnicalContent(message);
+  markTechnicalContent(message, excludedSelector);
   const lineWrapBudget = createLineWrapBudget();
 
   const blocks = new Set<HTMLElement>();
   // Code-like RTL prose is the release-critical case and must not be starved by
   // the per-message budget in long responses with many ordinary prose nodes.
   collectCodeLikeRtlProseBlocks(message, blocks);
-  adapter.findBlocks(region).forEach((candidate) => blocks.add(candidate.element));
+  adapter.findBlocks(region).forEach((candidate) => {
+    if (candidate.directionOwner) releaseBlockDirection(candidate.element);
+    else blocks.add(candidate.element);
+  });
 
   [...blocks].slice(0, MAX_BLOCKS_PER_MESSAGE).forEach((block) => {
+    if (excludedSelector && block.closest(excludedSelector)) return;
     const codeLikeRtlProse = isCodeLikeRtlProse(block);
     if (!codeLikeRtlProse && block.closest(TECHNICAL_SELECTOR)) return;
 
-    const text = codeLikeRtlProse ? (block.textContent?.trim() ?? '') : directReadableText(block);
+    const text = codeLikeRtlProse
+      ? (block.textContent?.trim() ?? '')
+      : directReadableText(block, excludedSelector);
     const lineLevel =
       options.experimentalMixedPromptFix &&
       lineWrapBudget.remaining > 0 &&

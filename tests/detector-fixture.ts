@@ -149,6 +149,36 @@ test('ChatGPT regions preserve selector order, roles, exclusions, containment, a
   assertDetectionOnly(before);
 });
 
+test('released ChatGPT semantic roots retain roles, exclusions, ownership, and facade parity', () => {
+  const before = resetFixture(`
+    <main>
+      <div id="modern-assistant" data-markdown-text-style="assistant-message">
+        <p id="modern-owner">متن <span id="modern-format">backend</span></p>
+        <div role="toolbar"><span id="modern-action">Copy</span></div>
+      </div>
+      <div data-user-message-bubble="true">
+        <div class="whitespace-pre-wrap"><div id="modern-user" data-markdown-text-tone="user-message"><p>متن کاربر</p></div></div>
+      </div>
+      <div role="toolbar"><div data-markdown-text-style="assistant-message">Control</div></div>
+      <form><div contenteditable="true" data-markdown-text-style="assistant-message">Editor</div></form>
+    </main>
+  `);
+  const regions = chatGptAdapter.findRegions(document);
+  assertRegionIds(regions, ['modern-assistant', 'modern-user'], 'narrow modern roots in release order');
+  assertIds(findAssistantMessages(document, 'chatgpt'), ['modern-assistant', 'modern-user'], 'modern facade parity');
+  assertEqual(regions[0]?.role, 'assistant', 'semantic assistant role');
+  assertEqual(regions[1]?.role, 'user', 'bubble user role');
+  assertEqual(regions[1]?.compatibility.inlineIsolation, 'experimental-only', 'modern user stays opt-in');
+  const span = requireElement<HTMLElement>('#modern-format');
+  assertEqual(chatGptAdapter.findContainingRegion(span)?.root.id, 'modern-assistant', 'modern streaming containment');
+  const blocks = chatGptAdapter.findBlocks(regions[0] as DetectedRegion);
+  assertEqual(blocks.find((candidate) => candidate.element === span)?.directionOwner?.id, 'modern-owner', 'formatting owner is metadata, not a mutation');
+  const excluded = regions[0]?.compatibility.excludedContentSelector;
+  assert(excluded, 'adapter supplies release exclusion policy');
+  assert(requireElement('#modern-action').closest(excluded), 'toolbar text is excluded');
+  assertDetectionOnly(before);
+});
+
 test('ChatGPT blocks and composers preserve ordering and compatibility metadata', () => {
   const before = resetFixture(`
     <main>

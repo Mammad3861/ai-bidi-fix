@@ -3,6 +3,21 @@ import test from 'node:test';
 
 import { findInlineLtrRanges } from '../src/core/inline-ltr.ts';
 
+test('preserves released compact MiB ranges and boundaries exactly', () => {
+  for (const value of ['338MiB', '۳۸۴MiB RAM', '٧٣MiB']) {
+    assert.deepEqual(findInlineLtrRanges(`متن ${value} است`), [
+      { start: 4, end: 4 + value.length, value },
+    ]);
+  }
+  assert.deepEqual(findInlineLtrRanges('۳۸۴ و ۳۲، ۰٫۳'), []);
+  assert.deepEqual(findInlineLtrRanges('384MiBextra'), [
+    { start: 3, end: 11, value: 'MiBextra' },
+  ]);
+  assert.deepEqual(findInlineLtrRanges('۳۸۴MB'), [
+    { start: 3, end: 5, value: 'MB' },
+  ]);
+});
+
 test('returns no ranges when the existing matcher finds no LTR run', () => {
   assert.deepEqual(findInlineLtrRanges(''), []);
   assert.deepEqual(findInlineLtrRanges('فقط متن فارسی'), []);

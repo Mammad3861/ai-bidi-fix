@@ -201,6 +201,18 @@ export function applyCodeTechnicalState(element: HTMLElement): void {
   setManagedDirection(element, 'ltr');
 }
 
+// Release only block-direction ownership, retaining native inline elements and
+// existing LTR islands when a streaming span acquires a semantic parent.
+export function releaseBlockDirection(block: HTMLElement): void {
+  if (block.dataset.bidifixDirection === undefined) return;
+  delete block.dataset.bidifixDirection;
+  delete block.dataset.bidifixCodeProse;
+  delete block.dataset.bidifixProcessed;
+  delete block.dataset.bidifixProcessedVersion;
+  delete block.dataset.bidifixTextSignature;
+  restoreManagedDirection(block);
+}
+
 export function applyBlockRendering(
   block: HTMLElement,
   options: BlockRenderingOptions,

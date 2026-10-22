@@ -7,6 +7,7 @@ export type InlineIsolationPolicy = 'default' | 'experimental-only';
 export interface RegionCompatibility {
   inlineIsolation: InlineIsolationPolicy;
   messageSiteMarker?: SupportedSite;
+  excludedContentSelector?: string;
 }
 
 export interface DetectedRegion {
@@ -20,6 +21,8 @@ export interface DetectedRegion {
 
 export interface BlockCandidate {
   element: HTMLElement;
+  // Formatting spans inherit their semantic owner's block direction.
+  directionOwner?: HTMLElement;
   region: DetectedRegion;
   hint: CandidateHint;
   editable: boolean;

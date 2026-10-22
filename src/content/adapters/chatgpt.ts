@@ -20,6 +20,9 @@ const MESSAGE_SELECTORS = [
   'main article [class*="whitespace-pre-wrap"]',
   '[data-message-author-role="user"] [class~="whitespace-pre-wrap"]',
   '[data-message-author-role="user"] [class*="whitespace-pre-wrap"]',
+  '[data-markdown-text-style="assistant-message"]',
+  '[data-user-message-bubble="true"] [data-markdown-text-tone="user-message"]',
+  '[data-user-message-bubble="true"] [class~="whitespace-pre-wrap"]',
 ] as const;
 
 const EXCLUDED_SELECTOR = [
@@ -30,6 +33,11 @@ const EXCLUDED_SELECTOR = [
   '[contenteditable="true"]',
   '[role="textbox"]',
   'button',
+  '[role="button"]',
+  '[role="toolbar"]',
+  '[data-markdown-copy="exclude"]',
+  '[data-testid="chatgpt-citation"]',
+  'span:has(> [data-testid="chatgpt-citation"])',
   'nav',
   'aside',
   '[role="dialog"]',
@@ -74,9 +82,15 @@ function isAllowedMessage(element: HTMLElement): boolean {
     return false;
   }
   if (element.closest(EXCLUDED_SELECTOR)) return false;
-  if (!element.closest('article[data-testid^="conversation-turn-"], [data-message-author-role]')) {
+  if (!element.closest('article[data-testid^="conversation-turn-"], [data-message-author-role], [data-markdown-text-style="assistant-message"], [data-user-message-bubble="true"]')) {
     return false;
   }
+  // The rich user root owns its text, not the surrounding collapsed-card UI.
+  if (
+    element.closest('[data-user-message-bubble="true"]') &&
+    element.matches('[class~="whitespace-pre-wrap"]') &&
+    element.querySelector('[data-markdown-text-tone="user-message"]')
+  ) return false;
   return Boolean(element.textContent?.trim());
 }
 
@@ -85,6 +99,8 @@ function regionRole(element: HTMLElement): RegionRole {
     .closest<HTMLElement>('[data-message-author-role]')
     ?.getAttribute('data-message-author-role');
   if (role === 'assistant' || role === 'user') return role;
+  if (element.closest('[data-user-message-bubble="true"]')) return 'user';
+  if (element.closest('[data-markdown-text-style="assistant-message"]')) return 'assistant';
   return 'unknown';
 }
 
@@ -108,10 +124,15 @@ function candidateHint(element: HTMLElement): CandidateHint {
 }
 
 function toBlockCandidates(region: DetectedRegion, elements: readonly HTMLElement[]): BlockCandidate[] {
+  const selected = new Set(elements);
   return elements.map((element, priority) => {
     const editable = Boolean(element.closest(EDITABLE_SELECTOR));
+    const owner = element.tagName === 'SPAN' && !element.matches(CODE_LIKE_SELECTOR)
+      ? element.parentElement?.closest<HTMLElement>(TEXT_BLOCK_SELECTOR)
+      : null;
     return {
       element,
+      directionOwner: owner && selected.has(owner) ? owner : undefined,
       region,
       hint: candidateHint(element),
       editable,
@@ -134,6 +155,12 @@ function findBlockElements(message: HTMLElement): HTMLElement[] {
   });
 
   message.querySelectorAll<HTMLElement>('span').forEach((span) => {
+    // Reconciliation can reuse a managed span containing only child elements.
+    // Keep it discoverable so the renderer can release stale block ownership.
+    if (span.dataset.bidifixDirection !== undefined && !span.matches(CODE_LIKE_SELECTOR)) {
+      const owner = span.parentElement?.closest<HTMLElement>(TEXT_BLOCK_SELECTOR);
+      if (owner && blocks.has(owner)) blocks.add(span);
+    }
     if (!span.textContent?.trim() || span.closest(TECHNICAL_SELECTOR)) return;
     if (span.closest(TEXT_BLOCK_SELECTOR)) return;
     if (span.querySelector(TEXT_BLOCK_SELECTOR)) return;
@@ -182,6 +209,7 @@ export const chatGptAdapter: SiteAdapter = {
       priority,
       compatibility: {
         inlineIsolation: role === 'user' ? 'experimental-only' : 'default',
+        excludedContentSelector: EXCLUDED_SELECTOR,
       },
     };
   },
